@@ -1,0 +1,1 @@
+{"dataset":{"training_source":"original_f971_coco","legacy_114_usage":"reference_only","library_splits":["train"],"require_visual_approval":true},"engine":"baseline","training_enabled":false,"crop":{"small":256,"medium":512,"long":"adaptive_native_pixels","context_pixels":16}}

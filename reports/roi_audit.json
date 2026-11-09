@@ -1,0 +1,11 @@
+{
+  "total": 245,
+  "errors": [],
+  "counts": {
+    "train": 133,
+    "val": 16,
+    "test": 84,
+    "HOLD": 12
+  },
+  "policy": "review only; no training consumption"
+}

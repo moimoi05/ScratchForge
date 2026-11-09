@@ -1,0 +1,457 @@
+{
+  "stamps": 133,
+  "source_polygons": 245,
+  "hold": [
+    {
+      "annotation": 158,
+      "reason": "Source split not verified"
+    },
+    {
+      "annotation": 159,
+      "reason": "Source split not verified"
+    },
+    {
+      "annotation": 191,
+      "reason": "Source split not verified"
+    },
+    {
+      "annotation": 202,
+      "reason": "Source split not verified"
+    },
+    {
+      "annotation": 204,
+      "reason": "Source split not verified"
+    },
+    {
+      "annotation": 230,
+      "reason": "Source split not verified"
+    },
+    {
+      "annotation": 233,
+      "reason": "Frame boundary: full scratch extent requires review"
+    },
+    {
+      "annotation": 241,
+      "reason": "Source split not verified"
+    },
+    {
+      "annotation": 245,
+      "reason": "Source split not verified"
+    }
+  ],
+  "evaluation_excluded": [
+    {
+      "annotation": 1,
+      "split": "test"
+    },
+    {
+      "annotation": 2,
+      "split": "val"
+    },
+    {
+      "annotation": 3,
+      "split": "val"
+    },
+    {
+      "annotation": 4,
+      "split": "val"
+    },
+    {
+      "annotation": 5,
+      "split": "val"
+    },
+    {
+      "annotation": 6,
+      "split": "val"
+    },
+    {
+      "annotation": 7,
+      "split": "val"
+    },
+    {
+      "annotation": 10,
+      "split": "test"
+    },
+    {
+      "annotation": 11,
+      "split": "test"
+    },
+    {
+      "annotation": 12,
+      "split": "test"
+    },
+    {
+      "annotation": 13,
+      "split": "test"
+    },
+    {
+      "annotation": 14,
+      "split": "test"
+    },
+    {
+      "annotation": 15,
+      "split": "test"
+    },
+    {
+      "annotation": 16,
+      "split": "test"
+    },
+    {
+      "annotation": 17,
+      "split": "test"
+    },
+    {
+      "annotation": 18,
+      "split": "test"
+    },
+    {
+      "annotation": 19,
+      "split": "test"
+    },
+    {
+      "annotation": 20,
+      "split": "test"
+    },
+    {
+      "annotation": 21,
+      "split": "test"
+    },
+    {
+      "annotation": 22,
+      "split": "test"
+    },
+    {
+      "annotation": 23,
+      "split": "test"
+    },
+    {
+      "annotation": 24,
+      "split": "test"
+    },
+    {
+      "annotation": 25,
+      "split": "test"
+    },
+    {
+      "annotation": 26,
+      "split": "test"
+    },
+    {
+      "annotation": 27,
+      "split": "test"
+    },
+    {
+      "annotation": 28,
+      "split": "test"
+    },
+    {
+      "annotation": 29,
+      "split": "test"
+    },
+    {
+      "annotation": 30,
+      "split": "test"
+    },
+    {
+      "annotation": 31,
+      "split": "test"
+    },
+    {
+      "annotation": 32,
+      "split": "test"
+    },
+    {
+      "annotation": 33,
+      "split": "test"
+    },
+    {
+      "annotation": 34,
+      "split": "test"
+    },
+    {
+      "annotation": 35,
+      "split": "test"
+    },
+    {
+      "annotation": 36,
+      "split": "test"
+    },
+    {
+      "annotation": 37,
+      "split": "test"
+    },
+    {
+      "annotation": 38,
+      "split": "test"
+    },
+    {
+      "annotation": 39,
+      "split": "test"
+    },
+    {
+      "annotation": 40,
+      "split": "test"
+    },
+    {
+      "annotation": 41,
+      "split": "test"
+    },
+    {
+      "annotation": 42,
+      "split": "test"
+    },
+    {
+      "annotation": 43,
+      "split": "test"
+    },
+    {
+      "annotation": 44,
+      "split": "test"
+    },
+    {
+      "annotation": 45,
+      "split": "test"
+    },
+    {
+      "annotation": 46,
+      "split": "test"
+    },
+    {
+      "annotation": 47,
+      "split": "test"
+    },
+    {
+      "annotation": 48,
+      "split": "test"
+    },
+    {
+      "annotation": 49,
+      "split": "test"
+    },
+    {
+      "annotation": 50,
+      "split": "test"
+    },
+    {
+      "annotation": 51,
+      "split": "test"
+    },
+    {
+      "annotation": 52,
+      "split": "test"
+    },
+    {
+      "annotation": 53,
+      "split": "test"
+    },
+    {
+      "annotation": 54,
+      "split": "test"
+    },
+    {
+      "annotation": 55,
+      "split": "test"
+    },
+    {
+      "annotation": 56,
+      "split": "test"
+    },
+    {
+      "annotation": 57,
+      "split": "test"
+    },
+    {
+      "annotation": 58,
+      "split": "test"
+    },
+    {
+      "annotation": 59,
+      "split": "test"
+    },
+    {
+      "annotation": 60,
+      "split": "test"
+    },
+    {
+      "annotation": 61,
+      "split": "test"
+    },
+    {
+      "annotation": 62,
+      "split": "test"
+    },
+    {
+      "annotation": 63,
+      "split": "test"
+    },
+    {
+      "annotation": 64,
+      "split": "test"
+    },
+    {
+      "annotation": 65,
+      "split": "test"
+    },
+    {
+      "annotation": 66,
+      "split": "test"
+    },
+    {
+      "annotation": 67,
+      "split": "test"
+    },
+    {
+      "annotation": 68,
+      "split": "test"
+    },
+    {
+      "annotation": 69,
+      "split": "test"
+    },
+    {
+      "annotation": 70,
+      "split": "test"
+    },
+    {
+      "annotation": 71,
+      "split": "test"
+    },
+    {
+      "annotation": 72,
+      "split": "test"
+    },
+    {
+      "annotation": 73,
+      "split": "test"
+    },
+    {
+      "annotation": 74,
+      "split": "test"
+    },
+    {
+      "annotation": 75,
+      "split": "test"
+    },
+    {
+      "annotation": 76,
+      "split": "test"
+    },
+    {
+      "annotation": 77,
+      "split": "test"
+    },
+    {
+      "annotation": 78,
+      "split": "test"
+    },
+    {
+      "annotation": 79,
+      "split": "test"
+    },
+    {
+      "annotation": 80,
+      "split": "test"
+    },
+    {
+      "annotation": 81,
+      "split": "test"
+    },
+    {
+      "annotation": 82,
+      "split": "test"
+    },
+    {
+      "annotation": 85,
+      "split": "val"
+    },
+    {
+      "annotation": 86,
+      "split": "val"
+    },
+    {
+      "annotation": 87,
+      "split": "val"
+    },
+    {
+      "annotation": 88,
+      "split": "val"
+    },
+    {
+      "annotation": 190,
+      "split": "test"
+    },
+    {
+      "annotation": 192,
+      "split": "test"
+    },
+    {
+      "annotation": 194,
+      "split": "test"
+    },
+    {
+      "annotation": 195,
+      "split": "test"
+    },
+    {
+      "annotation": 196,
+      "split": "test"
+    },
+    {
+      "annotation": 197,
+      "split": "test"
+    },
+    {
+      "annotation": 198,
+      "split": "test"
+    },
+    {
+      "annotation": 199,
+      "split": "test"
+    },
+    {
+      "annotation": 200,
+      "split": "test"
+    },
+    {
+      "annotation": 201,
+      "split": "test"
+    },
+    {
+      "annotation": 203,
+      "split": "test"
+    },
+    {
+      "annotation": 211,
+      "split": "val"
+    },
+    {
+      "annotation": 226,
+      "split": "test"
+    },
+    {
+      "annotation": 227,
+      "split": "test"
+    },
+    {
+      "annotation": 228,
+      "split": "val"
+    },
+    {
+      "annotation": 238,
+      "split": "val"
+    },
+    {
+      "annotation": 239,
+      "split": "val"
+    },
+    {
+      "annotation": 240,
+      "split": "val"
+    },
+    {
+      "annotation": 244,
+      "split": "val"
+    }
+  ],
+  "policy": "Original F971 NG only; verified train split; native pixels; full instances; visual approval required before training"
+}

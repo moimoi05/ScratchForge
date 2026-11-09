@@ -1,0 +1,30 @@
+{
+  "source": "D:\\RTC\\RD\\ScratchForge\\data\\raw\\F971\\OK\\images\\THAN_T_D_5_2026-09-14-11-01-40.jpg",
+  "request": {
+    "image_id": "01516415d77b4b0192ab13263fe92d2a",
+    "placements": [
+      {
+        "stamp_id": "original-8",
+        "x": 2410.65,
+        "y": 1055.7,
+        "scale": 1,
+        "rotation": 0
+      },
+      {
+        "stamp_id": "original-91",
+        "x": 3482.05,
+        "y": 1407.6000000000001,
+        "scale": 1.2,
+        "rotation": 30
+      }
+    ]
+  },
+  "result": {
+    "preview": "/files/7a08f2aa882049459dcfc1cf296bf036.png",
+    "mask": "/files/7a08f2aa882049459dcfc1cf296bf036-mask.png",
+    "export": "/files/7a08f2aa882049459dcfc1cf296bf036.zip",
+    "annotation": "/files/7a08f2aa882049459dcfc1cf296bf036.json",
+    "engine": "baseline"
+  },
+  "outside_mask_exact": true
+}

@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "patches": 114,
+  "clean_replacements": 39,
+  "polygons": 98,
+  "checks": [
+    "sha256 all raw and curated",
+    "RGB source pixel equality",
+    "source split integrity",
+    "polygon bounds"
+  ]
+}

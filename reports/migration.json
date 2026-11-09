@@ -1,0 +1,12 @@
+{
+  "patches": 114,
+  "replacements": 39,
+  "raw_files": 222,
+  "required_bytes": 0,
+  "polygons": 98,
+  "split_counts": {
+    "train": 72,
+    "val": 17,
+    "test": 25
+  }
+}
