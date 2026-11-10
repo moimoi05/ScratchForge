@@ -1,27 +1,78 @@
-# ScratchForge verification results
+# ScratchForge verification — 2026-11-10
 
-Date: 2026-11-09, Windows native, Python 3.11.
+This report supersedes the earlier clone's setup/GPU report. Evidence below was
+collected in the current checkout on Windows with Python 3.11.9 and Node 24.11.
 
-- Phase 1: independent empty-history Git repository initialized. No remote, commits or push. No legacy architecture/loss/trainer copied. Separate Python venv and npm lockfile created.
-- Phase 2: 222 raw files copied (~1.28 GB), disk preflight passed (~138 GB free). 114 reference patches, 39 clean replacements, 47 defect / 67 clean. Splits 72 train / 17 val / 25 test. 98 patch-local reference polygons. Every crop verified pixel-exact against original RGB source before offset conversion. All raw and curated SHA256, dimensions and source split checks PASS. No HOLD/DROP patches imported into reference set.
-- Phase 3: original-image COCO has 49 images / 245 annotations. 133 native-pixel train instances in library, 103 evaluation annotations excluded, 9 automatic HOLD. All 133 ROI RGB/mask pairs passed source-pixel and original-polygon coordinate tests. Nine contact sheets visually inspected; detailed findings in VISUAL_REVIEW.md. All instances remain pending native-resolution human approval. Legacy 114 patches are explicitly reference-only.
-- Phase 4: React/TypeScript/Vite/Konva production build PASS. Backend loopback health HTTP 200 and Vite HTTP 200. API upload/generate/export tests PASS. Two stamps exported on real F971 OK image; exact unchanged pixels outside union mask PASS. See example.json for source, scene and output links. Web includes Dataset, Library, Training status, Generation Center and Review/Export listing.
-- Phase 5: generator/load/ROI/compositor/monitor/checkpoint/evaluation contracts present. No training started or trained fidelity claim.
-- pytest: 10 passed in 41.58s. Includes collision refusal/idempotent copy, invalid COCO cases, adaptive crop/translation/rasterization, every original-image train ROI, transformed multi-stamp invariance, API validation, per-instance RLE and export ZIP.
+## Data
 
-## Remaining limits
+- Imported **186 full-frame RGB images**: 49 NG, 137 OK, 245 original scratch polygons.
+- Preserved source-image splits: NG 33/8/8 and OK 96/21/20 (train/val/test).
+- Original sources remained read-only. Checksum-verified copies, original COCO and
+  authoritative source split CSV are recorded in fullframe provenance.
+- Re-import was idempotent; full-frame verification PASS. No legacy patch/S942
+  dependency in the default setup.
+- Library: **138 train stamps**, 106 evaluation annotations excluded. All four
+  frame-touching annotations are HOLD: 53, 194, 203, 233. Assets contain the complete
+  polygon and native-resolution context; all 138 RGB/mask checksum pairs verified.
+- No native-resolution human approval of source stamps or generated images is
+  claimed. Final labels and image quality still require user review.
 
-- Browser UI automation unavailable: browser inventory empty; Edge unavailable. Actual browser drag/drop, transformer, brush and undo/redo interactions have not been verified. TypeScript and API tests do not replace this acceptance test.
-- All 133 train ROI/masks require detailed original-resolution review; contact-sheet screening is preliminary. Evaluation polygons have not been made into training stamps. Unknown split/boundary HOLD cases are unresolved; no reassignment inferred.
-- Baseline copies texture inside binary mask and can show edges/color discontinuity. No learned synthesis. Brush preview is fixed-color baseline.
-- Training UI is status-only. Engine contracts need actual model adapters, training jobs, checkpoint persistence, monitoring and quality evaluation implementation later.
-- Review/Export currently lists downloadable exports; accept/reject workflow and scene reload UI need further implementation. Random uses random stamp placement; no learned shape synthesis.
-- Vite bundle warning: ~571 KB minified. Starlette TestClient emits httpx deprecation warning; tests pass. No dependency vulnerabilities reported by npm audit at install time.
-- Git ignored all datasets, generated outputs and environments. No source file was intentionally written; migration only opens legacy data for reading.
+## Software
 
-## Final checks
+- **42 Python tests passed**, combined coverage **92.37%** over backend,
+  scratchforge and the three new data workflow modules. Every measured module >=80%.
+- Valid RED/GREEN evidence captured for missing importer/API/generation interfaces,
+  source/asset tampering, annotation deletion, split reassignment, missing model,
+  off-frame placement, and failed ZIP publication.
+- Tests cover fixtures independently of proprietary data: reviewed polygon export,
+  mask/COCO roundtrip, approval invalidation, blocked old download links, exploratory
+  upload restrictions, finite bounds, unsafe paths, failed jobs, interrupted-job
+  recovery, immutable background pixels, native stamp transforms and merged ROIs.
+- Security review findings fixed: unbounded retained full-frame masks, offscreen
+  tint-sampling crop, ZIP partial publication, background/stamp source integrity.
+- TypeScript/Vite production build PASS. Two mocked Playwright E2E tests PASS:
+  scene placement, job polling, final polygon creation/vertex correction, saving,
+  explicit approval/export, invalidation after changes, scene restore and API errors.
+- Real browser/API smoke PASS on **5239 x 3359** F971 OK: choose source, add stamp,
+  baseline generation, decoded full-frame review image, pending labels and blocked
+  training export, no browser JavaScript errors. Screenshot: `outputs/ui-smoke.png`.
+- Real-image baseline smoke separately verified full dimensions and pixel-exact
+  preservation outside the edit mask. Results remain pending human review.
+- Windows `setup.ps1 -Dev` completed end-to-end, including re-import, library,
+  verification, npm clean install and build. `start.ps1` launched the studio;
+  root HTTP 200, dataset PASS, 96 train backgrounds and 138 stamps returned.
 
-- Full original audit: 245 ROI/masks produced, 0 errors, all pairs pixel-checked against original RGB and original polygon translations by the tenth test. Audit partitions: train 133 / val 16 / test 84 / HOLD 12. All contact sheets screened; native-resolution approval is still pending.
-- Migration rerun PASS: required_bytes=0, no conflicting copies. Provenance includes raw image dimensions, mode, source name and verified split when available; unknown splits remain null. Verifier also compares hashes against legacy originals.
-- GPU PASS: PyTorch 2.7.1+cu128, CUDA runtime 12.8, RTX 5060 Ti, compute capability 12.0, sm_120 included. Real CUDA matrix multiplication and synchronize passed. No driver changes or training. Initial 2.11 download was replaced by the officially published cached 2.7.1 CUDA 12.8 wheel to complete installation; requirements match installed version.
-- Real-image exported example visually inspected: two visible stamp edits, baseline color/edge limitations expected. All outside-mask pixels remain exact.
+## Dependencies and hardware
+
+- Python dependency audit after updates: **no known vulnerabilities found**;
+  `pip check` passed. npm audit: **0 vulnerabilities**.
+- Pinned AI dependencies: Diffusers 0.42.1, Transformers 5.22.2, Accelerate 1.15.0,
+  Safetensors 0.8.0, Hugging Face Hub 2.4.0. Actual SDXL pipeline import checked on CPU.
+- GPU-host setup pins PyTorch 2.10.0+cu128 and Torchvision 0.25.0+cu128. That wheel
+  combination is not claimed hardware-tested in this environment.
+- Current host: Intel graphics; installed development PyTorch is CPU-only.
+  `check_gpu.py --require-cuda` correctly fails with NOT_AVAILABLE.
+- **Actual CUDA model inference: NOT RUN.** No model weights were downloaded on
+  this CPU-only host. Run `setup.ps1 -Gpu -DownloadModel` and GPU/model smoke on the
+  target NVIDIA machine. Adapter tests with CPU fakes establish software contracts
+  only, not CUDA support, VRAM consumption, throughput or F971 realism.
+
+## Acceptance remaining on the GPU machine
+
+Run kernel/model smoke, then inspect representative real F971 outputs for stamp
+and brush modes at full view and 100% zoom. Reject erased/implausible scratches,
+visible seams or incorrect labels. Pretrained SDXL has not been fine-tuned to F971;
+no guarantee of training-ready realism is made. Native/context ROIs can be resized
+inside the model; verify very small and long scratches rather than assuming fidelity.
+
+The Vite bundle is approximately 589 KB and emits its size advisory. The app is
+local-only, single-user, single-GPU-worker; deployment/auth and fine-tuning remain
+outside this release. No training runs or driver changes performed.
+
+## GPU handoff archive
+
+`outputs/transfer/F971-GPU-data-20261110.zip` contains 188 required source files
+(186 full-frame JPGs, original COCO, source split CSV), a per-file checksum manifest
+and data README. Size: 447,072,604 bytes (426.36 MiB). All archived member SHA256,
+byte sizes and ZIP CRCs passed. The archive and SHA256 sidecar stay outside Git;
+`guide.md` documents transfer, extraction, model setup and startup on Windows.

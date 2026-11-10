@@ -1,12 +1,21 @@
 {
   "status": "PASS",
-  "patches": 114,
-  "clean_replacements": 39,
-  "polygons": 98,
+  "images": 186,
+  "ng": 49,
+  "ok": 137,
+  "polygons": 245,
+  "split_counts": {
+    "NG/train": 33,
+    "NG/val": 8,
+    "NG/test": 8,
+    "OK/train": 96,
+    "OK/val": 21,
+    "OK/test": 20
+  },
   "checks": [
-    "sha256 all raw and curated",
-    "RGB source pixel equality",
+    "full-frame SHA256",
+    "RGB dimensions",
     "source split integrity",
-    "polygon bounds"
+    "full-frame COCO polygon bounds"
   ]
 }

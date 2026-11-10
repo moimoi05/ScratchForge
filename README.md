@@ -1,61 +1,118 @@
-# ScratchForge Studio
+# ScratchForge · F971 Studio
 
-Independent R&D workspace, planned repository name `scratchforge-studio`. No Defect-GAN source, trainer or loss was copied. No remote, commit, push, or training is performed.
+Web chạy cục bộ để đặt vết xước đã segment hoặc vẽ nét lên ảnh F971 OK,
+tạo ảnh nguyên khung, sửa nhãn và xuất dữ liệu training đã duyệt.
 
-## Windows native / Python 3.11
+**Có hai engine riêng:** baseline ghép ảnh/hòa màu và SDXL inpainting có sẵn.
+SDXL chưa được fine-tune F971; chất lượng xước công nghiệp cần được duyệt thực tế.
+Không có quy trình training model trong bản này.
 
-PowerShell, from `D:\RTC\RD\ScratchForge` (activation is optional):
+## Chạy trên Windows
 
-```powershell
-py -3.11 -m venv .venv
-.\.venv\Scripts\python -m pip install -r requirements.txt
-.\.venv\Scripts\python -m pip install -r requirements-gpu.txt
-.\.venv\Scripts\python scripts/migrate_legacy_data.py
-.\.venv\Scripts\python scripts/verify_dataset.py
-.\.venv\Scripts\python scripts/build_library.py
-.\.venv\Scripts\python scripts/build_roi_audit.py
-.\.venv\Scripts\python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+Cần Python **3.11**, Node.js/npm và dữ liệu nguồn. Mặc định hai repo đặt cạnh nhau:
+
+```text
+RD/
+  GAN_Project/
+    F971/NG/images/*.jpg
+    F971/NG/annotations/coco.json
+    F971/OK/images/*.jpg
+    reports/source_image_splits.csv
+  ScratchForge/
 ```
 
-Second PowerShell:
+Mở PowerShell tại thư mục ScratchForge. Setup thường để dùng web/baseline:
 
 ```powershell
-npm.cmd --prefix frontend ci
-npm.cmd --prefix frontend run dev
+powershell -ExecutionPolicy Bypass -File scripts/setup.ps1
+powershell -ExecutionPolicy Bypass -File scripts/start.ps1
 ```
 
-Open http://127.0.0.1:5173; API docs http://127.0.0.1:8000/docs. Use RGB PNG/JPEG, select stamps or drag from library, transform via handles, brush, undo/redo, generate baseline, download ZIP. Zoom slider and background drag provide zoom/pan. All scene positions are original image pixels; stamp position is its center. Uniform scale, clockwise rotation in screen coordinates and optional horizontal flip are applied by backend inverse affine transform. Canvas is an interactive approximation; generated backend PNG is authoritative.
-
-## Data and provenance
-
-`data/raw/F971` and `data/raw/S942` are checksum-verified copies. `data/provenance.json` tracks raw old/new paths, sizes and hashes; `data/manifest.json` tracks all 114 reference patches, source names, source paths, splits, RGB dimensions, crop offsets and hashes. Original source is read-only. Copy collisions with different hashes abort; identical files are reused. Migration validates every patch against an exact decoded RGB source crop before converting polygon coordinates. It never fabricates missing mappings. Run migration again to check idempotence.
-
-**114 legacy patches are reference only, never a default new training dataset.** Their 39 clean replacements are retained. Counts: train 72, val 17, test 25. The curated COCO is a reference mapping only.
-
-**New ROI source is original NG F971 RGB plus original-image COCO coordinates.** `scripts/build_library.py` uses verified source split assignments. It creates train-only native-resolution 256/512/adaptive crops with 16 px context, clipped context at image boundaries, never resizing source scratches. Each instance has RGB, binary mask, polygon, source hash, source offset, split and pending review status. Frame-touching polygons and unknown splits are HOLD. Val/test are excluded from the stamp library. COCO JSON originals remain byte-for-byte copies. No pretrained model exists here.
-
-`data/library/contact-*.jpg` shows every train ROI overlay and mask. Contact sheets are scaled for inspection only. Every ROI remains PENDING_VISUAL_REVIEW until detailed human review at original resolution; sheet review alone does not authorize training. See reports for suspect cases.
-
-## Baseline / export
-
-Current preview copies transformed scratch RGB inside a binary instance mask. Brush uses a fixed scratch-colored baseline. No GAN or inpainting result is claimed. Export ZIP includes RGB PNG, union mask PNG, exact per-instance uncompressed COCO RLE, and editable scene JSON. RLE preserves holes and pixel coverage; export polygons are not approximated. Overlap belongs to both instance masks. Outside the union mask pixels remain exactly unchanged. Preview realism, local color matching and blend-edge quality require further work.
-
-## AI extension
-
-`scratchforge/engine.py`: local mask-conditioned generator, ROI inference, loading, training monitoring, checkpoint and quality-evaluation contracts, and RGB compositing. Implement a LocalGenerator adapter for future GAN/inpainting; keep request coordinates and export interface stable. Training page intentionally reports no model/checkpoints. There is no training command or automatic epoch loop.
-
-## Verification
+Mở **http://127.0.0.1:8000**. Dừng bằng Ctrl+C. Source khác vị trí mặc định:
 
 ```powershell
-.\.venv\Scripts\python -m pytest -q
+powershell -ExecutionPolicy Bypass -File scripts/setup.ps1 -Source "D:\duong-dan\GAN_Project"
+```
+
+Trên máy NVIDIA dự kiến RTX 5060 Ti **16 GB VRAM**, setup AI:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/setup.ps1 -Gpu -DownloadModel
+.\.venv\Scripts\python scripts/check_gpu.py --require-cuda --inference-smoke
+powershell -ExecutionPolicy Bypass -File scripts/start.ps1
+```
+
+Lần đầu tải model cần Internet và vài GB đĩa. Script chỉ tải model về, không gửi
+ảnh sản phẩm ra ngoài. Sau khi tải, inference dùng file cục bộ. CUDA Toolkit có
+sẵn chưa đủ: kiểm tra phải chạy được kernel PyTorch và inference thật. Script không
+cài/thay driver hoặc system CUDA. Chưa có GPU thì vẫn setup dữ liệu và chạy baseline.
+
+## Cách sử dụng
+
+1. Chọn ảnh trong **Nền OK**. Danh sách chỉ chứa 96 nền thuộc train.
+2. Chọn **Vết xước** để bấm thêm/kéo thả stamp. Dùng các tay nắm để xoay/phóng,
+   nút lật/xóa và Undo/Redo; hoặc chọn **Vẽ xước** để vẽ hướng dẫn bằng tay.
+3. Chọn **AI · SDXL Inpainting** hoặc **Baseline · Ghép ảnh**, seed, mức biến đổi,
+   biên chỉnh sửa; bấm **Tạo ảnh**. Baseline không phải kết quả AI.
+4. So sánh trước/sau, xem 100%, vẽ polygon quanh vết xước thực tế và kéo đỉnh để sửa.
+   AI được đổi hình nên mask hướng dẫn không tự trở thành nhãn ground truth.
+5. **Lưu nhãn**, xác nhận đã kiểm tra ảnh/nhãn, rồi **Duyệt ảnh và nhãn**.
+   Sau đó mới **Xuất bộ training**. Sửa nhãn sẽ hủy duyệt và vô hiệu link xuất cũ.
+6. Tab **Ảnh đã tạo** cho mở lại kết quả. Từ màn duyệt có thể mở lại scene để dựng tiếp.
+
+Ảnh upload ngoài dataset chỉ để thử nghiệm, không được xuất thành bộ training.
+Mọi ảnh thật còn cần người dùng duyệt chất lượng và độ khớp nhãn trước sử dụng.
+
+## Dữ liệu và đầu ra
+
+- Nguồn đã xác minh: **49 NG / 245 polygon**, **137 OK**, tất cả nguyên khung.
+- Split NG: **33 train / 8 validation / 8 test**; OK: **96 / 21 / 20**.
+  Dùng `source_image_splits.csv`; không suy split từ bộ patch cũ.
+- `data/raw/F971/`: bản sao checksum-verified; source không bị sửa.
+- `data/fullframe/index.json`, `coco.json`, `provenance.json`: toàn bộ ảnh, nhãn
+  tọa độ gốc, split và checksum. Ảnh OK có annotation rỗng.
+- `data/library/`: **138 stamp train** từ polygon đầy đủ có context; 4 instance
+  chạm biên HOLD (`53, 194, 203, 233`), 106 annotation evaluation không dùng làm stamp.
+  Asset stamp là vùng trích nội bộ; dữ liệu chính và ảnh kết quả vẫn nguyên khung.
+- `outputs/`: ảnh input/kết quả, mask hướng dẫn, vùng AI được sửa, scene, trạng thái
+  job/duyệt và ZIP. Không dùng 114 patch legacy hoặc S942 làm setup mặc định.
+
+Mỗi ZIP đã duyệt gồm `image.png` nguyên khung, `mask.png` từ nhãn cuối,
+`annotations.json` COCO polygon, `scene.json`, `provenance.json`. Provenance lưu
+nguồn nền/stamp, split, seed, engine, tham số và model revision. Chỉ nguồn train
+được xuất; validation/test thật được giữ riêng để đánh giá.
+
+AI xử lý vùng bao trọn nét cùng ngữ cảnh rồi ghép lại ảnh gốc. Những vùng giao nhau
+được gộp, không chia tile làm cắt nét. Adapter giữ tỉ lệ vùng xử lý khi đưa vào model;
+nét rất nhỏ hoặc quá dài vẫn cần kiểm tra ở 100%. Pixel ngoài vùng sửa giữ nguyên.
+
+## Kiểm thử và phát triển
+
+```powershell
+.\.venv\Scripts\python -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python -m pytest -q --cov=backend --cov=scratchforge --cov=scripts.import_f971 --cov=scripts.build_library --cov=scripts.verify_dataset --cov-fail-under=80
 .\.venv\Scripts\python scripts/verify_dataset.py
-npm.cmd --prefix frontend run build
-.\.venv\Scripts\python scripts/check_gpu.py
 .\.venv\Scripts\python scripts/make_example.py
+npm.cmd --prefix frontend run build
+npm.cmd --prefix frontend exec -- playwright install chromium
+npm.cmd --prefix frontend run test:e2e
+# Khi web đang chạy và dữ liệu thật đã nhập:
+npm.cmd --prefix frontend run test:real
 ```
 
-See `reports/TEST_RESULTS.md` for actual results and limitations. `data/`, outputs, dependencies and caches are git-ignored. Do not commit proprietary images. App binds loopback only and is intended for a single local user; deployment/auth, persistent scene editing, detailed dataset review decisions and training orchestration remain future work.
+Unit/API tests dùng fixture độc lập, không cần proprietary dataset hoặc CUDA.
+`make_example.py` chạy baseline trên ảnh thật và giữ kết quả chờ người duyệt.
+Browser tests có fixture API riêng; kiểm thử GPU thực và duyệt chất lượng F971
+là các bước độc lập, không được suy từ mock hoặc báo cáo cũ.
 
-GPU wheels pinned from the official PyTorch previous versions page: https://pytorch.org/get-started/previous-versions/ . CUDA kernel execution must pass on the local RTX 5060 Ti; no driver/system changes are performed.
+Nếu phát triển UI riêng: chạy API như trên, rồi `npm.cmd --prefix frontend run dev`
+và mở http://127.0.0.1:5173. API docs: http://127.0.0.1:8000/docs.
 
-`data/roi_audit/` contains all 245 original instances for visual audit only, partitioned as train 133, val 16, test 84, HOLD 12 (8 unknown splits and 4 boundary instances). The training Stamp Library excludes evaluation data; its 9 HOLD items refer only to the pre-library train/unknown-split selection.
+Model: [`diffusers/stable-diffusion-xl-1.0-inpainting-0.1`](https://huggingface.co/diffusers/stable-diffusion-xl-1.0-inpainting-0.1).
+Model download lưu commit cụ thể vào `model-provenance.json`; có thể cấu hình
+`SCRATCHFORGE_MODEL_DIR` trước khi chạy web nếu model nằm ngoài thư mục mặc định.
+PyTorch GPU được khóa bản CUDA 12.8 theo [hướng dẫn chính thức](https://pytorch.org/get-started/previous-versions/).
+
+Ứng dụng dành cho một người dùng cục bộ, chạy **một Uvicorn worker**, bind localhost.
+Dataset/model/output/dependency được git-ignore. Không commit ảnh sản phẩm.
+Xem `AGENTS.md` cho quy tắc dự án và `reports/TEST_RESULTS.md` cho bằng chứng kiểm thử.

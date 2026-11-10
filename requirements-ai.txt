@@ -1,0 +1,6 @@
+# Install the CUDA PyTorch wheel from requirements-gpu.txt first on the GPU host.
+diffusers==0.42.1
+transformers==5.22.2
+accelerate==1.15.0
+safetensors==0.8.0
+huggingface-hub==2.4.0

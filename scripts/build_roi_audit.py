@@ -5,7 +5,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from scratchforge.dataset import *
 def build():
  c=json.loads((ROOT/'data/raw/F971/NG/annotations/coco.json').read_text());images={i['id']:i for i in c['images']}
- rows=list(csv.DictReader((ROOT/'data/reference/source_split_leakage_check.csv').open(encoding='utf-8-sig')));splits={r['source_image']:{'validation':'val'}.get(r['source_split_assignment'],r['source_split_assignment']) for r in rows if r['leakage']=='NO'}
+ rows=json.loads((ROOT/'data/fullframe/index.json').read_text());splits={r['source_image']:r['split'] for r in rows if r['status']=='NG'}
  out=ROOT/'data/roi_audit';out.mkdir(exist_ok=True);entries=[];errors=[]
  for a in c['annotations']:
   i=images[a['image_id']];split=splits.get(i['file_name'],'HOLD');seg=a['segmentation']

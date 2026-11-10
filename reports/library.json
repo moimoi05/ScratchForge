@@ -1,42 +1,26 @@
 {
-  "stamps": 133,
+  "stamps": 138,
   "source_polygons": 245,
   "hold": [
     {
-      "annotation": 158,
-      "reason": "Source split not verified"
+      "annotation": 53,
+      "split": "test",
+      "reason": "Frame boundary: complete scratch extent requires review"
     },
     {
-      "annotation": 159,
-      "reason": "Source split not verified"
+      "annotation": 194,
+      "split": "test",
+      "reason": "Frame boundary: complete scratch extent requires review"
     },
     {
-      "annotation": 191,
-      "reason": "Source split not verified"
-    },
-    {
-      "annotation": 202,
-      "reason": "Source split not verified"
-    },
-    {
-      "annotation": 204,
-      "reason": "Source split not verified"
-    },
-    {
-      "annotation": 230,
-      "reason": "Source split not verified"
+      "annotation": 203,
+      "split": "test",
+      "reason": "Frame boundary: complete scratch extent requires review"
     },
     {
       "annotation": 233,
-      "reason": "Frame boundary: full scratch extent requires review"
-    },
-    {
-      "annotation": 241,
-      "reason": "Source split not verified"
-    },
-    {
-      "annotation": 245,
-      "reason": "Source split not verified"
+      "split": "train",
+      "reason": "Frame boundary: complete scratch extent requires review"
     }
   ],
   "evaluation_excluded": [
@@ -381,6 +365,10 @@
       "split": "test"
     },
     {
+      "annotation": 191,
+      "split": "test"
+    },
+    {
       "annotation": 192,
       "split": "test"
     },
@@ -417,6 +405,10 @@
       "split": "test"
     },
     {
+      "annotation": 202,
+      "split": "val"
+    },
+    {
       "annotation": 203,
       "split": "test"
     },
@@ -437,6 +429,10 @@
       "split": "val"
     },
     {
+      "annotation": 230,
+      "split": "val"
+    },
+    {
       "annotation": 238,
       "split": "val"
     },
@@ -453,5 +449,5 @@
       "split": "val"
     }
   ],
-  "policy": "Original F971 NG only; verified train split; native pixels; full instances; visual approval required before training"
+  "policy": "Full-frame F971 sources; train-only complete native-pixel instances; pending visual review"
 }

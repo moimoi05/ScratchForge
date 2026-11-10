@@ -1,4 +1,11 @@
-# ROI visual inspection ? preliminary, not training approval
+# ROI visual inspection — historical screening, not training approval
+
+Current setup (2026-11-10) supersedes the old inventory below: the complete source
+split CSV yields 138 train stamps and four boundary HOLD instances (53, 194, 203,
+233). No source split is unknown in the 186-image full-frame dataset. Current
+stamps and all generated images still require native-resolution human review.
+The observations below are historical screening notes for the earlier 133-stamp
+library, not evidence that the five added stamps or new outputs were reviewed.
 
 All 9 contact sheets (133 original-image train instances, orange polygon overlay plus white binary mask) were inspected. No mask displacement is apparent at sheet scale. Exact pixel equality and original polygon-to-local offset are separately tested for every ROI.
 

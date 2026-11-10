@@ -1,1 +1,18 @@
-{"dataset":{"training_source":"original_f971_coco","legacy_114_usage":"reference_only","library_splits":["train"],"require_visual_approval":true},"engine":"baseline","training_enabled":false,"crop":{"small":256,"medium":512,"long":"adaptive_native_pixels","context_pixels":16}}
+{
+  "dataset": {
+    "product": "F971",
+    "source": "../GAN_Project",
+    "training_source": "fullframe_f971_coco",
+    "split_source": "reports/source_image_splits.csv",
+    "legacy_114_usage": "optional_reference_only",
+    "library_splits": ["train"],
+    "require_visual_approval": true
+  },
+  "engine": "sdxl",
+  "model": "diffusers/stable-diffusion-xl-1.0-inpainting-0.1",
+  "model_dir": "data/models/sdxl-inpaint",
+  "training_enabled": false,
+  "output": {"full_frame": true, "reviewed_polygons_required": true},
+  "crop": {"usage": "internal_only", "small": 256, "medium": 512,
+    "long": "adaptive_native_pixels", "context_pixels": 16}
+}

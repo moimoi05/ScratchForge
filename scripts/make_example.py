@@ -1,15 +1,61 @@
-import sys,json,io
+"""Real full-frame baseline smoke; leaves results pending human review."""
+import json
+import sys
+import time
 from pathlib import Path
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import numpy as np
 from fastapi.testclient import TestClient
-from backend.main import app,library
-from scratchforge.dataset import *
-c=TestClient(app); rows=json.loads((ROOT/'data/manifest.json').read_text()); r=next(r for r in rows if r['domain']=='clean' and r['split']=='train'); source=ROOT/r['source_path']
-with Image.open(source) as im:
- b=io.BytesIO();im.convert('RGB').save(b,format='PNG');w,h=im.size
-up=c.post('/api/upload',files={'file':('ok.png',b.getvalue(),'image/png')}).json(); stamps=library()
-request={'image_id':up['id'],'placements':[{'stamp_id':stamps[0]['id'],'x':w*.45,'y':h*.3,'scale':1,'rotation':0},{'stamp_id':stamps[6]['id'],'x':w*.65,'y':h*.4,'scale':1.2,'rotation':30}]}
-r=c.post('/api/generate',json=request);r.raise_for_status();result=r.json()
-with Image.open(source) as original,Image.open(ROOT/'outputs'/Path(result['preview']).name) as generated,Image.open(ROOT/'outputs'/Path(result['mask']).name) as mask:
- outside=np.array(mask)==0;assert np.array_equal(np.array(original.convert('RGB'))[outside],np.array(generated)[outside])
-save_json(ROOT/'reports/example.json',dict(source=str(source),request=request,result=result,outside_mask_exact=True));print(result)
+from PIL import Image
+
+from backend.main import app
+from scratchforge.dataset import ROOT, save_json
+
+
+def main():
+    with TestClient(app) as client:
+        backgrounds = client.get('/api/backgrounds').json()
+        stamps = client.get('/api/library').json()
+        if not backgrounds or not stamps:
+            raise RuntimeError('Run import_f971.py and build_library.py first.')
+        source = backgrounds[0]
+        opened = client.post(f"/api/backgrounds/{source['id']}/open")
+        opened.raise_for_status()
+        image = opened.json()
+        scene = {'image_id': image['id'], 'engine': 'baseline', 'seed': 0,
+                 'placements': [{'stamp_id': stamps[0]['id'], 'x': image['width']/2,
+                                 'y': image['height']/2, 'scale': 1, 'rotation': 0, 'flip': False}],
+                 'brushes': []}
+        submitted = client.post('/api/jobs', json=scene)
+        submitted.raise_for_status()
+        deadline = time.monotonic() + 120
+        while True:
+            job = client.get('/api/jobs/' + submitted.json()['id']).json()
+            if job['status'] == 'failed':
+                raise RuntimeError(job['error'])
+            if job['status'] == 'succeeded':
+                break
+            if time.monotonic() >= deadline:
+                raise TimeoutError('Baseline smoke did not finish within 120 seconds.')
+            time.sleep(.25)
+        result = job['result']
+        with Image.open(ROOT / image['url'].lstrip('/').replace('files/', 'outputs/', 1)) as before, \
+             Image.open(ROOT / result['preview'].lstrip('/').replace('files/', 'outputs/', 1)) as after, \
+             Image.open(ROOT / result['edit_mask'].lstrip('/').replace('files/', 'outputs/', 1)) as mask:
+            outside = np.asarray(mask) == 0
+            assert before.size == after.size == (image['width'], image['height'])
+            assert np.array_equal(np.asarray(before)[outside], np.asarray(after)[outside])
+        blocked = client.post(f"/api/results/{result['id']}/export")
+        assert blocked.status_code == 409
+        report = {'engine': 'baseline', 'source': source['source_image'],
+                  'width': image['width'], 'height': image['height'], 'result': result,
+                  'outside_edit_region_exact': True, 'unreviewed_export_blocked': True,
+                  'note': 'Software smoke only; image and polygons await human review.'}
+        save_json(ROOT/'reports/example-runtime.json', report)
+        print(json.dumps({key: value for key, value in report.items() if key != 'result'}, indent=2))
+        print('Preview: http://127.0.0.1:8000' + result['preview'])
+
+
+if __name__ == '__main__':
+    main()
