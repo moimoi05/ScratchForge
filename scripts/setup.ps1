@@ -24,6 +24,7 @@ Invoke-Checked $pythonExe @('-m', 'pip', 'install', '-r', $requirements)
 if ($Gpu) {
     Invoke-Checked $pythonExe @('-m', 'pip', 'install', '-r', 'requirements-gpu.txt')
     Invoke-Checked $pythonExe @('-m', 'pip', 'install', '-r', 'requirements-ai.txt')
+    Invoke-Checked $pythonExe @('-m', 'pip', 'install', '-r', 'requirements-harmonization.txt')
     Invoke-Checked $pythonExe @('scripts/check_gpu.py', '--require-cuda')
 }
 if ($DownloadModel) {

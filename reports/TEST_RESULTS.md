@@ -3,6 +3,36 @@
 This report supersedes the earlier clone's setup/GPU report. Evidence below was
 collected in the current checkout on Windows with Python 3.11.9 and Node 24.11.
 
+## Split stamp/brush pipeline update
+
+- 81 Python tests passed; coverage 96% across backend, scratchforge, model download
+  and harmonization registration modules (every measured module >=80%).
+- TypeScript/Vite build and two mocked browser journeys passed. The real F971
+  Classical stamp browser journey also passed with review/export gates intact.
+- Separate real-image mixed-layer smoke on 5239 x 3359 RGB: Procedural brush plus
+  requested PCT-Net stamp fell back explicitly to Classical because its checkpoint
+  was absent. Full dimensions and every pixel outside the edit mask were preserved.
+  Output: `outputs/split-pipeline-smoke.png` (ignored, pending human review).
+- SD15 CPU loading/512 canvas and three harmonization native-resolution adapter
+  contracts tested with controlled models. No real AI weights or CUDA inference
+  were exercised; these tests do not establish perceptual quality.
+- Review fixed malformed legacy engine input returning 500; regression now requires
+  validation 422. Optional checkpoint loading uses tensor-only deserialization.
+
+## Model download management update
+
+- 97 Python tests passed. New model download, cache verification and worker modules
+  have 87%+ targeted coverage; API and cancellation tests are included.
+- Frontend build and all three mocked Playwright journeys passed, including keeping
+  the old method selected through download, verification and cancellation.
+- `pip check` and `pip-audit -r requirements.txt` passed with no broken requirements
+  or known vulnerabilities. Model cache download/checksum tests used local fixtures;
+  no multi-GB model was downloaded during validation.
+- SDXL and SD 1.5 select CUDA FP16 when available. Real RTX 5060 Ti inference remains
+  untested; diffusion models can use `SCRATCHFORGE_CPU_OFFLOAD=1` when needed.
+- SD 1.5 real checkpoint loaded successfully on CPU after fixing VAE tiling to call
+  the VAE API. End-to-end diffusion inference and RTX 5060 Ti remain unverified.
+
 ## Data
 
 - Imported **186 full-frame RGB images**: 49 NG, 137 OK, 245 original scratch polygons.

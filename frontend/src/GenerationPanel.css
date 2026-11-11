@@ -1,0 +1,45 @@
+.generation-methods {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  margin: 5px 0 8px;
+}
+.generation-methods label {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  color: #c2d8d2;
+  font-size: 11px;
+}
+.generation-methods select {
+  width: 100%;
+  min-width: 0;
+  font-size: 11px;
+}
+.generation-panel .generation-options {
+  grid-template-columns: 0.8fr 1.2fr 1fr;
+}
+.method-warnings {
+  background: #382d1d;
+  border: 1px solid #755831;
+  border-radius: 6px;
+  padding: 10px 15px;
+  color: #f2c38b;
+}
+.method-warnings p { margin: 5px 0; }
+.effective-methods { color: #9ab7b0; font-size: 11px; }
+.result-card .fallback-label { color: #f2c38b; }
+@media (max-width: 620px) {
+  .generation-methods { grid-template-columns: 1fr; }
+  .generation-panel .generation-options { grid-template-columns: 1fr; }
+}
+.model-status-list { display: grid; gap: 7px; margin-top: 12px; }
+.model-status-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px; background: #101e22; border-radius: 6px; }
+.model-status-row > div { min-width: 0; flex: 1; }
+.model-status-row b { font-size: 11px; }
+.model-status-row small { display: block; color: #9ab7b0; font-size: 10px; margin-top: 4px; overflow-wrap: anywhere; }
+.model-status-row button { padding: 6px 10px; font-size: 11px; }
+.model-status-row progress { display: block; width: 100%; height: 5px; margin-top: 7px; accent-color: #68dfc0; }
+.model-download-error { color: #f0b89a !important; font-size: 11px; }

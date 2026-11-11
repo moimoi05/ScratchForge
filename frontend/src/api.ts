@@ -23,11 +23,15 @@ export type Placement = {
   flip: boolean;
 };
 export type Brush = { points: number[]; width: number };
+export type StampMethod = "classical_mixed" | "classical_laplacian" | "pctnet" | "harmonizer" | "rainnet";
+export type BrushMethod = "sdxl" | "sd15" | "procedural";
 export type Scene = {
   image_id?: string;
   placements: Placement[];
   brushes: Brush[];
   engine?: "baseline" | "sdxl";
+  stamp_method?: StampMethod;
+  brush_method?: BrushMethod;
   seed?: number;
   strength?: number;
   edit_margin?: number;
@@ -50,6 +54,10 @@ export type Result = {
   polygons: number[][];
   review_status: string;
   scene: Scene;
+  warnings?: string[];
+  provenance?: {
+    layers?: { kind: "stamp" | "brush"; requested_method: string; effective_method: string }[];
+  };
 };
 export async function api<T>(
   path: string,

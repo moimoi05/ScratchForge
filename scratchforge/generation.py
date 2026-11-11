@@ -6,6 +6,8 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
+from scratchforge.ai import procedural_scratch
+
 from scratchforge.engine import composite
 from scratchforge.dataset import sha
 
@@ -17,6 +19,8 @@ class SceneOutput:
     edit: Image.Image
     polygons: list
     regions: list
+    layers: list
+    warnings: tuple
 
     def __iter__(self):
         return iter((self.image, self.guidance, self.edit, self.polygons))
@@ -61,17 +65,7 @@ def _place(original, placement, stamp, directory):
         alpha = source.convert('L')
     if rgba.size != alpha.size:
         raise ValueError('Stamp mask dimensions mismatch')
-    # Preserve the observed scratch contrast while adjusting the local background tint.
-    source_array = np.asarray(rgba.convert('RGB'), dtype=np.float32)
-    mask_array = np.asarray(alpha) > 0
     x, y = placement['x'], placement['y']
-    sample_x = max(0, min(original.width-1, int(x)))
-    sample_y = max(0, min(original.height-1, int(y)))
-    target = original.crop((max(0, sample_x-32), max(0, sample_y-32),
-                            min(original.width, sample_x+33), min(original.height, sample_y+33)))
-    if target.width and target.height and (~mask_array).any():
-        offset = np.median(np.asarray(target).reshape(-1, 3), axis=0) - np.median(source_array[~mask_array], axis=0)
-        rgba = Image.fromarray(np.clip(source_array + offset, 0, 255).astype('uint8')).convert('RGBA')
     rgba.putalpha(alpha)
     theta = math.radians(placement.get('rotation', 0)); scale = placement.get('scale', 1)
     c, sn = math.cos(theta), math.sin(theta); flip = -1 if placement.get('flip', False) else 1
@@ -82,47 +76,97 @@ def _place(original, placement, stamp, directory):
     return warped.convert('RGB'), mask
 
 
-def generate_scene(original, scene, stamps, directory, infer=None):
-    lookup = {stamp['id']: stamp for stamp in stamps}
-    result = original.copy(); boxes = []; guidance = Image.new('L', original.size)
-    for placement in scene.get('placements', []):
-        if placement['stamp_id'] not in lookup:
-            raise ValueError('Unknown stamp')
-        stamp = lookup[placement['stamp_id']]
-        if stamp.get('split') != 'train':
-            raise ValueError('Only train stamps are available')
-        warped, mask = _place(original, placement, stamp, directory)
-        result.paste(warped, (0, 0), mask)
-        if mask.getbbox():
-            boxes.append(mask.getbbox())
-        guidance.paste(255, (0, 0), mask)
-    for brush in scene.get('brushes', []):
+def brush_method(scene):
+    return scene.get('brush_method') or ('sdxl' if scene.get('engine') == 'sdxl' else 'procedural')
+
+
+def brush_mask(original, brushes):
+    guidance = Image.new('L', original.size)
+    boxes = []
+    for brush in brushes:
         mask = Image.new('L', original.size)
         ImageDraw.Draw(mask).line(list(zip(brush['points'][::2], brush['points'][1::2])),
-                                 fill=255, width=round(brush['width']), joint='curve')
-        result.paste((180, 155, 115), (0, 0, *original.size), mask)
-        if mask.getbbox():
-            boxes.append(mask.getbbox())
-        guidance.paste(255, (0, 0), mask)
-    if not boxes:
-        raise ValueError('Place or draw at least one visible scratch')
-    margin = scene.get('edit_margin', 24)
-    edit = Image.new('L', original.size)
-    # Only the bounding region is filtered, avoiding a full-frame large-kernel operation.
-    for box in build_regions(boxes, original.size, margin):
+                                 fill=255, width=round(brush.get('width', 12)), joint='curve')
+        box = mask.getbbox()
+        if box:
+            boxes.append(box)
+            guidance.paste(255, (0, 0), mask)
+    return guidance, boxes
+
+
+def edit_mask(guidance, boxes, margin):
+    edit = Image.new('L', guidance.size)
+    for box in build_regions(boxes, guidance.size, margin):
         local = guidance.crop(box)
         if margin:
             local = local.filter(ImageFilter.MaxFilter(margin*2+1))
         edit.paste(local, box[:2])
+    return edit
+
+
+def _brush_branch(original, scene, infer):
+    guidance, boxes = brush_mask(original, scene.get('brushes', []))
+    method = brush_method(scene)
+    margin = scene.get('edit_margin', 24)
+    edit = guidance.copy() if method == 'procedural' else edit_mask(guidance, boxes, margin)
     regions = build_regions(boxes, original.size, margin+96)
-    if scene.get('engine', 'baseline') == 'sdxl':
-        if infer is None:
-            raise ValueError('SDXL inference is unavailable')
-        for box in regions:
-            generated = infer(result.crop(box), edit.crop(box), scene.get('seed', 0), scene.get('strength', .65))
-            if generated.size != (box[2]-box[0], box[3]-box[1]):
-                raise ValueError('AI returned incorrect region dimensions')
-            result.paste(generated, box[:2], edit.crop(box))
-    else:
-        edit = guidance.copy()
-    return SceneOutput(composite(original, result, edit), guidance, edit, [], regions)
+    result = original.copy(); layers = []
+    for box in regions:
+        adapter = procedural_scratch if method == 'procedural' else infer
+        if adapter is None:
+            raise ValueError(f'{method} inference is unavailable')
+        local_mask = (guidance if method == 'procedural' else edit).crop(box)
+        generated = adapter(original.crop(box), local_mask, scene.get('seed', 0), scene.get('strength', .65))
+        if generated.size != (box[2]-box[0], box[3]-box[1]):
+            raise ValueError('AI returned incorrect region dimensions')
+        result.paste(generated, box[:2], local_mask)
+        layers.append({'kind': 'brush', 'requested_method': method, 'effective_method': method,
+                       'roi': list(box), 'warnings': [], 'metadata': {'native_size': list(local_mask.size)}})
+    return result, guidance, edit, regions, layers
+
+
+def _stamp_branch(original, scene, stamps, directory, harmonize):
+    lookup = {stamp['id']: stamp for stamp in stamps}
+    result = original.copy(); support = Image.new('L', original.size)
+    layers = []; regions = []; warnings = []
+    for placement in scene.get('placements', []):
+        stamp = lookup.get(placement['stamp_id'])
+        if stamp is None:
+            raise ValueError('Unknown stamp')
+        if stamp.get('split') != 'train':
+            raise ValueError('Only train stamps are available')
+        warped, mask = _place(original, placement, stamp, directory)
+        bounds = mask.getbbox()
+        if bounds is None:
+            continue
+        box = build_regions([bounds], original.size, scene.get('edit_margin', 24))[0]
+        background = original.crop(box); local_mask = mask.crop(box)
+        placed = Image.composite(warped.crop(box), background, local_mask)
+        method = scene.get('stamp_method', 'classical_mixed')
+        corrected = harmonize(placed, local_mask, background, method)
+        if corrected.image.size != background.size:
+            raise ValueError('Stamp harmonization returned incorrect native region dimensions')
+        result.paste(corrected.image, box[:2], local_mask)
+        support.paste(255, (0, 0), mask)
+        regions.append(box); warnings.extend(corrected.warnings)
+        layers.append({'kind': 'stamp', 'stamp_id': stamp['id'], 'roi': list(box),
+                       'requested_method': corrected.requested_method, 'effective_method': corrected.effective_method,
+                       'warnings': list(corrected.warnings), 'metadata': corrected.metadata})
+    return result, support, regions, layers, warnings
+
+
+def generate_scene(original, scene, stamps, directory, infer=None, harmonize=None):
+    if harmonize is None and scene.get('placements'):
+        from scratchforge.harmonization import StampHarmonizer
+        harmonize = StampHarmonizer()
+    brush_rgb, brush_guidance, brush_edit, brush_regions, brush_layers = _brush_branch(original, scene, infer)
+    stamp_rgb, stamp_mask, stamp_regions, stamp_layers, warnings = _stamp_branch(
+        original, scene, stamps, directory, harmonize)
+    if not brush_guidance.getbbox() and not stamp_mask.getbbox():
+        raise ValueError('Place or draw at least one visible scratch')
+    # Each branch sees the original image. Stamp cores win overlaps and never traverse a VAE.
+    result = brush_rgb.copy(); result.paste(stamp_rgb, (0, 0), stamp_mask)
+    guidance = Image.fromarray(np.maximum(np.asarray(brush_guidance), np.asarray(stamp_mask)))
+    edit = Image.fromarray(np.maximum(np.asarray(brush_edit), np.asarray(stamp_mask)))
+    return SceneOutput(composite(original, result, edit), guidance, edit, [],
+                       [*brush_regions, *stamp_regions], [*brush_layers, *stamp_layers], tuple(dict.fromkeys(warnings)))

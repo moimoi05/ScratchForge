@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from PIL import Image, UnidentifiedImageError
 
 from backend.jobs import Jobs
-from backend.models import Annotations, Approval, Brush, Placement, Request
+from backend.models import Annotations, Approval, Brush, ModelDownloadRequest, Placement, Request
 from backend.store import Store, read_json
 from scratchforge.dataset import ROOT, sha
 from scratchforge.generation import generate_scene
@@ -19,12 +19,16 @@ ALLOWED_ORIGINS = {'http://localhost:5173', 'http://127.0.0.1:5173',
                    'http://localhost:8000', 'http://127.0.0.1:8000'}
 
 
-def create_app(root=ROOT, infer=None):
-    store = Store(root); jobs = Jobs(store, infer)
+def create_app(root=ROOT, infer=None, harmonize=None, downloads=None):
+    store = Store(root); jobs = Jobs(store, infer, harmonize)
+    if downloads is None:
+        from backend.model_downloads import ModelDownloads
+        downloads = ModelDownloads(root)
 
     @asynccontextmanager
     async def lifespan(app):
         yield
+        downloads.close()
         jobs.executor.shutdown(wait=True, cancel_futures=False)
 
     application = FastAPI(title='ScratchForge F971 Studio', lifespan=lifespan)
@@ -56,7 +60,21 @@ def create_app(root=ROOT, infer=None):
 
     @application.get('/api/health')
     def health():
-        return {'engine': 'baseline + local SDXL inpainting', 'trained': False, 'ai': jobs.ai.metadata()}
+        return {'engine': 'separate stamp harmonization and brush generation', 'trained': False,
+                'ai': jobs.ai.metadata(), 'brush_models': {'sdxl': jobs.ai.metadata(), 'sd15': jobs.sd15.metadata()},
+                'stamp_methods': ['classical_mixed', 'classical_laplacian', 'pctnet', 'harmonizer', 'rainnet']}
+
+    @application.get('/api/models/status')
+    def model_status():
+        return {'models': downloads.status()}
+
+    @application.post('/api/models/download')
+    def model_download(request: ModelDownloadRequest):
+        return downloads.start(request.model_id)
+
+    @application.post('/api/models/cancel')
+    def model_cancel(request: ModelDownloadRequest):
+        return downloads.cancel(request.model_id)
 
     @application.get('/api/library')
     def get_library():
@@ -198,5 +216,5 @@ def library():
 
 def render(image, request):
     """Compatibility helper for baseline callers; exports always require review."""
-    rgb, mask, _, _ = generate_scene(image, {**request.model_dump(), 'engine': 'baseline'}, library(), ROOT/'data/library')
+    rgb, mask, _, _ = generate_scene(image, {**request.model_dump(), 'engine': 'baseline', 'brush_method': 'procedural'}, library(), ROOT/'data/library')
     return rgb, mask, []

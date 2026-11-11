@@ -1,0 +1,4 @@
+# Install matched torch/torchvision first (requirements-gpu.txt on NVIDIA).
+# The optional PCT-Net adapter needs these; Harmonizer/RainNet use torch/torchvision.
+einops==0.8.2
+kornia==0.9.0

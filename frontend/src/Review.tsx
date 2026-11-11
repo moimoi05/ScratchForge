@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Stage, Layer, Image as KImage, Line, Circle } from "react-konva";
 import useImage from "use-image";
 import { api, message, url, type Result } from "./api";
+import { resultMethodSummary } from "./generationMethods";
 
 export function Review({
   result,
@@ -104,6 +105,10 @@ export function Review({
         </div>
         <button onClick={onBack}>← Về bàn dựng</button>
       </div>
+      {!!result.warnings?.length && <div className="method-warnings" role="status">
+        {result.warnings.map((warning, index) => <p key={index}>{warning}</p>)}
+      </div>}
+      <p className="effective-methods" data-testid="effective-methods">Đã xử lý: {resultMethodSummary(result)}</p>
       <div className="review-layout">
         <div>
           <div className="canvas-toolbar">

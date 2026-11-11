@@ -32,10 +32,19 @@ class Request(StrictModel):
     image_id: str = Field(pattern='^[a-f0-9]{32}$')
     placements: list[Placement] = Field(default_factory=list, max_length=100)
     brushes: list[Brush] = Field(default_factory=list, max_length=100)
-    engine: Literal['baseline', 'sdxl'] = 'baseline'
+    engine: Literal['baseline', 'sdxl'] | None = None
+    stamp_method: Literal['classical_mixed', 'classical_laplacian', 'pctnet', 'harmonizer', 'rainnet'] = 'classical_mixed'
+    brush_method: Literal['sdxl', 'sd15', 'procedural'] = 'procedural'
     seed: int = Field(default=0, ge=0, le=2**32-1)
     strength: float = Field(default=.65, ge=.1, le=.99)
     edit_margin: int = Field(default=24, ge=0, le=128)
+
+    @model_validator(mode='before')
+    @classmethod
+    def legacy_methods(cls, data):
+        if isinstance(data, dict) and 'brush_method' not in data and data.get('engine') in ('baseline', 'sdxl'):
+            return {**data, 'brush_method': 'sdxl' if data['engine'] == 'sdxl' else 'procedural'}
+        return data
 
     @model_validator(mode='after')
     def nonempty(self):
@@ -58,3 +67,7 @@ class Annotations(StrictModel):
 
 class Approval(StrictModel):
     confirmed: Literal[True]
+
+
+class ModelDownloadRequest(StrictModel):
+    model_id: Literal['pctnet', 'harmonizer', 'rainnet', 'sdxl', 'sd15']

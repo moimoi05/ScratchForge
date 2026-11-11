@@ -118,7 +118,8 @@ def test_sdxl_adapter_protocol_with_cpu_fakes(tmp_path, monkeypatch):
         pass
     fake_torch = SimpleNamespace(float16='fp16', cuda=SimpleNamespace(is_available=lambda: False, OutOfMemoryError=OutOfMemoryError, empty_cache=lambda: None),
                                  Generator=lambda device: SimpleNamespace(manual_seed=lambda seed: seed))
-    pipeline = SimpleNamespace(enable_model_cpu_offload=lambda: None, enable_vae_tiling=lambda: None)
+    placements = []
+    pipeline = SimpleNamespace(to=lambda device: placements.append(device), enable_model_cpu_offload=lambda: placements.append('offload'), enable_vae_tiling=lambda: None)
     factory = SimpleNamespace(from_pretrained=lambda *args, **kwargs: pipeline)
     monkeypatch.setitem(sys.modules, 'torch', fake_torch)
     monkeypatch.setitem(sys.modules, 'diffusers', SimpleNamespace(AutoPipelineForInpainting=factory))
@@ -127,6 +128,10 @@ def test_sdxl_adapter_protocol_with_cpu_fakes(tmp_path, monkeypatch):
     fake_torch.cuda.is_available = lambda: True
     adapter._load()
     assert adapter.pipeline is pipeline
+    assert placements == ['cuda']
+    monkeypatch.setenv('SCRATCHFORGE_CPU_OFFLOAD', '1')
+    adapter._load()
+    assert placements[-1] == 'offload'
     received = {}
     def run(**kwargs):
         received.update(kwargs)

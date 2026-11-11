@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-test("real F971 baseline keeps full frame and awaits manual review", async ({
+test("real F971 classical stamp keeps full frame and awaits manual review", async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -15,7 +15,7 @@ test("real F971 baseline keeps full frame and awaits manual review", async ({
   const stamp = page.getByRole("button", { name: /^Thêm original-/ }).first();
   await expect(stamp).toBeEnabled({ timeout: 60000 });
   await stamp.click();
-  await page.getByLabel("Phương pháp").selectOption("baseline");
+  await page.getByLabel("Phương pháp ghép Stamp", { exact: true }).selectOption("classical_mixed");
   await page.getByRole("button", { name: "Tạo ảnh" }).click();
   await expect(
     page.getByRole("heading", { name: "Duyệt ảnh và nhãn" }),

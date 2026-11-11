@@ -161,3 +161,11 @@ def test_verified_stamp_source_and_assets_generate_successfully(studio):
     job = finish(studio, {'image_id': image['id'], 'placements': [{'stamp_id': 'stamp-1', 'x': 40, 'y': 40}]})
     assert job['status'] == 'succeeded', job
     assert job['result']['provenance']['stamps'][0]['source_frame_id'] == 'ng-1'
+
+
+@pytest.mark.parametrize('engine', [[], {}, 7])
+def test_malformed_legacy_engine_is_validation_error(studio, engine):
+    image = studio.post('/api/backgrounds/clean-1/open').json()
+    response = studio.post('/api/jobs', json={'image_id': image['id'], 'engine': engine,
+                                             'brushes': [{'points': [10, 10, 30, 30]}]})
+    assert response.status_code == 422

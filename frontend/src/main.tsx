@@ -11,6 +11,8 @@ import {
 } from "./api";
 import { StudioCanvas } from "./StudioCanvas";
 import { Review } from "./Review";
+import { GenerationPanel } from "./GenerationPanel";
+import { resultMethodSummary, settingsFromScene, type GenerationSettings } from "./generationMethods";
 import "./style.css";
 
 const emptyScene: Scene = { placements: [], brushes: [] };
@@ -28,15 +30,13 @@ function App() {
   const [selected, setSelected] = useState(-1),
     [tool, setTool] = useState<"select" | "brush">("select"),
     [brushWidth, setBrushWidth] = useState(12);
-  const [engine, setEngine] = useState<"baseline" | "sdxl">("sdxl"),
-    [seed, setSeed] = useState(42),
-    [strength, setStrength] = useState(0.65),
-    [margin, setMargin] = useState(24);
+  const [settings, setSettings] = useState<GenerationSettings>(settingsFromScene());
   const [result, setResult] = useState<Result>(),
     [history, setHistory] = useState<Result[]>([]),
     [dataset, setDataset] = useState<Record<string, unknown>>();
   const [health, setHealth] = useState<{
       ai?: { model_available?: boolean };
+      brush_models?: { sdxl?: { model_available?: boolean }; sd15?: { model_available?: boolean } };
       engine?: string;
     }>(),
     [job, setJob] = useState<Job>(),
@@ -145,11 +145,9 @@ function App() {
     try {
       const next = await api<Job>("/api/jobs", "POST", {
         image_id: image!.id,
-        ...scene,
-        engine,
-        seed,
-        strength,
-        edit_margin: margin,
+        placements: scene.placements,
+        brushes: scene.brushes,
+        ...settings,
       });
       setJob(next);
     } catch (e) {
@@ -174,10 +172,7 @@ function App() {
       url: `/files/${s.image_id}-input.png`,
     });
     setScene({ placements: s.placements ?? [], brushes: s.brushes ?? [] });
-    if (s.engine) setEngine(s.engine);
-    if (s.seed !== undefined) setSeed(s.seed);
-    if (s.strength !== undefined) setStrength(s.strength);
-    if (s.edit_margin !== undefined) setMargin(s.edit_margin);
+    setSettings(settingsFromScene(s));
     setPage("studio");
   }
   const count = scene.placements.length + scene.brushes.length;
@@ -498,92 +493,11 @@ function App() {
                   vẽ
                 </span>
               </div>
-              <section className="generation-panel">
-                <div>
-                  <span className="eyebrow">02 / TẠO ẢNH</span>
-                  <h2>Hòa hợp với bề mặt</h2>
-                  <p>
-                    AI xử lý ánh sáng và texture trong vùng chỉnh sửa. Ảnh xuất
-                    luôn nguyên khung.
-                  </p>
-                </div>
-                <div className="generation-options">
-                  <label>
-                    Phương pháp
-                    <select
-                      aria-label="Phương pháp"
-                      value={engine}
-                      disabled={busy}
-                      onChange={(e) =>
-                        setEngine(e.target.value as "baseline" | "sdxl")
-                      }
-                    >
-                      <option value="sdxl">AI · SDXL Inpainting</option>
-                      <option value="baseline">Baseline · Ghép ảnh</option>
-                    </select>
-                  </label>
-                  <label>
-                    Seed
-                    <input
-                      aria-label="Seed"
-                      type="number"
-                      min="0"
-                      max="2147483647"
-                      value={seed}
-                      disabled={busy}
-                      onChange={(e) =>
-                        setSeed(
-                          Math.max(0, Math.min(2147483647, +e.target.value)),
-                        )
-                      }
-                    />
-                  </label>
-                  <label>
-                    Mức biến đổi <b>{strength.toFixed(2)}</b>
-                    <input
-                      aria-label="Mức biến đổi"
-                      type="range"
-                      min=".1"
-                      max=".99"
-                      step=".01"
-                      value={strength}
-                      disabled={busy}
-                      onChange={(e) => setStrength(+e.target.value)}
-                    />
-                  </label>
-                  <label>
-                    Biên chỉnh sửa (px)
-                    <input
-                      aria-label="Biên chỉnh sửa"
-                      type="number"
-                      min="0"
-                      max="128"
-                      value={margin}
-                      disabled={busy}
-                      onChange={(e) =>
-                        setMargin(Math.max(0, Math.min(128, +e.target.value)))
-                      }
-                    />
-                  </label>
-                </div>
-                <button
-                  className="primary generate"
-                  disabled={!image || !count || busy}
-                  onClick={generate}
-                >
-                  {busy ? "Đang xử lý…" : "Tạo ảnh"}
-                </button>
-                <p className="model-note">
-                  {busy
-                    ? `Job ${job?.status ?? "đang gửi"} · giữ nguyên scene trong lúc xử lý`
-                    : engine === "sdxl"
-                      ? "Model có sẵn, chưa được huấn luyện riêng cho F971. Kết quả cần được duyệt."
-                      : "Baseline là ghép pixel và hòa màu; không phải ảnh sinh bởi AI."}
-                  {engine === "sdxl" && health?.ai?.model_available === false
-                    ? " Chưa thấy model cục bộ — chạy bước tải model trên máy GPU."
-                    : ""}
-                </p>
-              </section>
+              <GenerationPanel
+                settings={settings} onChange={setSettings} busy={busy}
+                canGenerate={!!image && !!count} jobStatus={job?.status}
+                hasBrushes={scene.brushes.length > 0} health={health} onGenerate={generate}
+              />
             </article>
           </main>
         </>
@@ -705,8 +619,9 @@ function App() {
                 <strong>{item.id.slice(0, 12)}</strong>
                 <small>
                   {item.width} × {item.height} ·{" "}
-                  {item.scene?.engine ?? "baseline"}
+                  {resultMethodSummary(item)}
                 </small>
+                {!!item.warnings?.length && <small className="fallback-label">Có fallback · xem chi tiết kết quả</small>}
               </button>
             ))}
           </div>
