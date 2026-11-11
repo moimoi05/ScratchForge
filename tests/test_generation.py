@@ -20,7 +20,7 @@ def test_mock_ai_changes_only_edit_region():
     outside = np.asarray(edit) == 0
     assert np.array_equal(np.asarray(rgb)[outside], np.asarray(original)[outside])
     assert np.any(np.asarray(rgb)[~outside] != np.asarray(original)[~outside])
-    assert guidance.getbbox() and polygons == []
+    assert guidance.getbbox() and polygons
 
 
 def test_empty_scene_is_rejected():

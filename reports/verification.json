@@ -17,5 +17,11 @@
     "RGB dimensions",
     "source split integrity",
     "full-frame COCO polygon bounds"
-  ]
+  ],
+  "format": "TIFF",
+  "segment_counts": {
+    "f971-scratch": 49,
+    "f971-ok": 137,
+    "s942-ok": 34
+  }
 }

@@ -1,5 +1,7 @@
 param(
     [string]$Source = (Join-Path $PSScriptRoot '../../GAN_Project'),
+    [string]$ImageRoot = (Join-Path $PSScriptRoot '../../image'),
+    [string]$Coco = (Join-Path $PSScriptRoot '../../GAN Industry Scratch.v1i.coco-segmentation/train/_annotations.coco.json'),
     [switch]$Gpu,
     [switch]$DownloadModel,
     [switch]$Dev
@@ -31,7 +33,7 @@ if ($DownloadModel) {
     if (-not $Gpu) { throw 'Use -Gpu -DownloadModel together on the NVIDIA machine.' }
     Invoke-Checked $pythonExe @('scripts/download_model.py')
 }
-Invoke-Checked $pythonExe @('scripts/import_f971.py', '--source', $Source)
+Invoke-Checked $pythonExe @('scripts/import_tiff_dataset.py', '--source', $Source, '--image-root', $ImageRoot, '--coco', $Coco)
 Invoke-Checked $pythonExe @('scripts/build_library.py')
 Invoke-Checked $pythonExe @('scripts/verify_dataset.py')
 Invoke-Checked 'npm.cmd' @('--prefix', 'frontend', 'ci')

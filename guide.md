@@ -14,7 +14,7 @@ Không cần Docker cho quy trình này.
   https://git-scm.com/download/win. Kiểm tra `node --version`, `npm.cmd --version`
   và `git --version`.
 - Cần Internet trong lần setup đầu để tải thư viện và model, cùng dung lượng
-  trống cho môi trường PyTorch, model và các ảnh PNG kết quả.
+  trống cho môi trường PyTorch, model và các ảnh TIFF kết quả.
 
 Không chuyển `.venv` hoặc `node_modules` từ máy cũ. Script sẽ tạo lại môi trường
 cho đúng máy. Script không thay driver hoặc system CUDA.
@@ -50,7 +50,8 @@ Expand-Archive -LiteralPath $zipPath -DestinationPath D:\Projects
 ```
 
 Giải nén vào thư mục cha `D:\Projects`, vì ZIP đã có thư mục `GAN_Project` bên trong.
-Không thêm một lớp `GAN_Project` nữa. Kết quả cần là:
+Bản ZIP cũ cung cấp COCO và bảng split. Chép thêm ba thư mục TIFF gốc và bản xuất
+COCO Roboflow từ máy nguồn để setup phiên bản hiện tại:
 
 ```text
 D:\Projects\
@@ -58,17 +59,16 @@ D:\Projects\
     guide.md
     scripts\setup.ps1
   GAN_Project\
-    F971\
-      NG\images\*.jpg
-      NG\annotations\coco.json
-      OK\images\*.jpg
+    F971\NG\annotations\coco.json
     reports\source_image_splits.csv
-  F971-DATA-CHECKSUMS.json
-  F971-DATA-README.txt
+  GAN Industry Scratch.v1i.coco-segmentation\train\_annotations.coco.json
+  image\
+    F971_Scratch\*.tif
+    S942_OK\*.tif
+    2026-09-14\ORG\MATTRUOC\CAM2\DOME-1\*.tif
 ```
 
-Data không được push lên GitHub. Nếu chỉ clone code mà chưa chuyển ZIP,
-setup sẽ thiếu dữ liệu nguồn.
+Giữ dữ liệu ảnh và COCO trên máy cục bộ.
 
 ## 3. Cài môi trường GPU và tải model
 
@@ -90,10 +90,10 @@ Script sẽ thực hiện:
    `data/models/sdxl-inpaint/`. Commit model được ghi trong `model-provenance.json`.
 5. Nhập ảnh nguyên khung, dựng 138 stamp train, verify dữ liệu và build frontend.
 
-Nếu data không nằm cạnh repo, truyền đúng thư mục chứa `F971` và `reports`:
+Nếu dữ liệu ở vị trí khác, chỉ định thư mục chứa `F971` và `reports`, thư mục TIFF và file COCO:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup.ps1 -Source 'E:\Data\GAN_Project' -Gpu -DownloadModel
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup.ps1 -Source 'E:\Data\GAN_Project' -ImageRoot 'E:\Data\image' -Coco 'E:\Data\_annotations.coco.json' -Gpu -DownloadModel
 ```
 
 Model có sẵn chưa được fine-tune F971. Tải model không đồng nghĩa đã huấn luyện
@@ -127,7 +127,7 @@ Ctrl+C để dừng. Những lần sau chỉ cần chạy `scripts/start.ps1`.
    trên ảnh kết quả theo vết xước thực tế.
 5. **Lưu nhãn** → xác nhận đã kiểm tra → **Duyệt ảnh và nhãn** → **Xuất bộ training**.
 
-ZIP đầu ra gồm PNG nguyên khung, mask, COCO polygon đã duyệt, scene và provenance.
+ZIP đầu ra mới gồm TIFF nguyên khung, mask PNG, COCO polygon đã duyệt, scene và provenance.
 Đổi nhãn sẽ hủy duyệt cũ. Chỉ nền/stamp từ train được xuất; validation/test thật
 được giữ riêng. Không duyệt ảnh nếu vết xước bị xóa, texture không thật hoặc nhãn lệch.
 
@@ -223,3 +223,44 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup.ps1 -Gpu
 
 **Không có GPU** — chạy setup không có `-Gpu`, sau đó start web và chọn stamp
 Classical, nét vẽ Procedural. Xem `README.md` và `reports/TEST_RESULTS.md` cho kiểm thử.
+
+## 7. Mở rộng kho TIFF và train LoRA
+
+Mở **Dữ liệu nguồn**, dùng cột trái để import TIFF nguyên khung + COCO Polygon JSON
+hoặc Crop TIFF + Mask PNG nhị phân cùng kích thước. Điền ID nguồn và xác nhận thuộc
+tập train. Không dùng nguồn validation/test/HOLD; khai báo không thể biến nguồn
+evaluation đã biết thành dữ liệu train. Polygon của stamp dùng tọa độ crop; polygon
+ảnh kết quả dùng tọa độ nguyên khung.
+
+Chọn stamp rồi dùng **A / Augment** để tạo biến thể. Kiểm tra preview/mask, chỉnh
+polygon nếu cần và duyệt mẫu trước khi train. **B / Train LoRA** nhận stamp TIFF
+thực/import hoặc augment đã duyệt, chọn SD 1.5/SDXL Inpainting, steps, seed; mặc định
+SD 1.5 và 1.000 steps. Có tiến trình thực và nút Hủy. Chỉ weights `.safetensors`
+hoàn chỉnh được đưa vào danh sách LoRA; mẫu AI không được train lại mặc định.
+
+**C / Sinh stamp** dùng LoRA tương thích và mask mẫu train trên nền giả lập. Mask
+tự tách từ chênh lệch ảnh trước/sau trong vùng cho phép; ngưỡng quá cao có thể làm
+mất xước mảnh. Xem/sửa/duyệt nhãn trước sử dụng; mẫu hợp lệ tự hiện ở **Vết xước**.
+
+Trong **Bàn dựng**, Stamp Brush uốn TIFF theo polyline bằng TPS rồi hòa hợp theo Ô 1.
+Chọn một mẫu hoặc ngẫu nhiên; ID mẫu thực dùng được lưu theo từng nét. Chế độ AI
+hiển thị LoRA đã chọn và trạng thái nạp thực; Procedural tiếp tục chạy CPU.
+Ảnh mới có polygon tự đề xuất: kiểm tra ở 100%, sửa nếu cần rồi xác nhận duyệt.
+ZIP gồm TIFF RGB24, LZW, 300 DPI, nguyên kích thước; `mask_full.png`, `polygon.json`
+COCO, scene/provenance và các tên tương thích cũ. Sửa nhãn hủy duyệt và link export cũ.
+
+Máy này chỉ phát triển mã; kiểm chứng GPU thực trên Windows RTX 5060 Ti 16 GB,
+RAM 32 GB. Sau khi cài `requirements-gpu.txt` và `requirements-ai.txt` (gồm PEFT),
+tải cả hai base, duyệt stamp train và dừng web:
+
+```powershell
+.\.venv\Scripts\python scripts/smoke_lora.py --base-model both --steps 2
+# Hoặc chọn cụ thể stamp TIFF đã duyệt:
+.\.venv\Scripts\python scripts/smoke_lora.py --base-model sd15 --stamp-id '<ID>' --steps 2
+```
+
+Lệnh dùng TIFF OK train đã xác minh ở kích thước gốc, ưu tiên 5861×3421 nếu có. Nó kiểm tra
+CUDA kernel, train/hủy thật, nạp lại LoRA, inference và TIFF/pixel ngoài mask; ghi
+`reports/lora-smoke-runtime.json`. Thiếu CUDA hoặc kiểm tra thất bại trả mã khác 0.
+Chạy test CPU không chứng minh GPU đạt. HALCON vẫn cần mở TIFF thật trên máy đích
+và xác nhận thủ công; báo cáo smoke để trạng thái HALCON là `NOT_RUN`.

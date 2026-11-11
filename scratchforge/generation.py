@@ -10,6 +10,8 @@ from scratchforge.ai import procedural_scratch
 
 from scratchforge.engine import composite
 from scratchforge.dataset import sha
+from scratchforge.labels import difference_mask, mask_to_polygons
+from scratchforge.warping import warp_stamp
 
 
 @dataclass(frozen=True)
@@ -21,6 +23,7 @@ class SceneOutput:
     regions: list
     layers: list
     warnings: tuple
+    label_mask: Image.Image | None = None
 
     def __iter__(self):
         return iter((self.image, self.guidance, self.edit, self.polygons))
@@ -53,20 +56,30 @@ def safe_asset(directory, name):
     return path
 
 
-def _place(original, placement, stamp, directory):
+def _load_stamp(stamp, directory):
     rgb_path = safe_asset(directory, stamp['rgb'])
     mask_path = safe_asset(directory, stamp['mask'])
     for key, path in [('rgb_sha256', rgb_path), ('mask_sha256', mask_path)]:
         if not stamp.get(key) or sha(path) != stamp[key]:
             raise ValueError('Stamp asset checksum missing or changed; rebuild the scratch library')
     with Image.open(rgb_path) as source:
+        if source.format == 'TIFF' or rgb_path.suffix.lower() in {'.tif', '.tiff'}:
+            from backend.images import validate_tiff
+            validate_tiff(source)
         rgba = source.convert('RGBA')
     with Image.open(mask_path) as source:
         alpha = source.convert('L')
     if rgba.size != alpha.size:
         raise ValueError('Stamp mask dimensions mismatch')
-    x, y = placement['x'], placement['y']
+    if not np.isin(np.asarray(alpha), (0, 255)).all():
+        raise ValueError('Stamp requires a binary scratch mask')
     rgba.putalpha(alpha)
+    return rgba, alpha
+
+
+def _place(original, placement, stamp, directory):
+    rgba, _ = _load_stamp(stamp, directory)
+    x, y = placement['x'], placement['y']
     theta = math.radians(placement.get('rotation', 0)); scale = placement.get('scale', 1)
     c, sn = math.cos(theta), math.sin(theta); flip = -1 if placement.get('flip', False) else 1
     a, b, d, e = flip*c/scale, flip*sn/scale, -sn/scale, c/scale
@@ -108,21 +121,72 @@ def _brush_branch(original, scene, infer):
     guidance, boxes = brush_mask(original, scene.get('brushes', []))
     method = brush_method(scene)
     margin = scene.get('edit_margin', 24)
-    edit = guidance.copy() if method == 'procedural' else edit_mask(guidance, boxes, margin)
+    # Context controls the inference ROI, never the pixels allowed to be pasted.
+    edit = guidance.copy()
     regions = build_regions(boxes, original.size, margin+96)
-    result = original.copy(); layers = []
+    result = original.copy(); layers = []; labels = Image.new('L', original.size)
     for box in regions:
         adapter = procedural_scratch if method == 'procedural' else infer
         if adapter is None:
             raise ValueError(f'{method} inference is unavailable')
-        local_mask = (guidance if method == 'procedural' else edit).crop(box)
+        local_mask = guidance.crop(box)
         generated = adapter(original.crop(box), local_mask, scene.get('seed', 0), scene.get('strength', .65))
         if generated.size != (box[2]-box[0], box[3]-box[1]):
             raise ValueError('AI returned incorrect region dimensions')
         result.paste(generated, box[:2], local_mask)
+        local_labels = local_mask if method == 'procedural' else difference_mask(
+            original.crop(box), generated, local_mask, scene.get('ai_mask_threshold', 8),
+            scene.get('min_component_area', 3))
+        labels.paste(255, box[:2], local_labels)
         layers.append({'kind': 'brush', 'requested_method': method, 'effective_method': method,
                        'roi': list(box), 'warnings': [], 'metadata': {'native_size': list(local_mask.size)}})
-    return result, guidance, edit, regions, layers
+    return result, guidance, edit, labels, regions, layers, []
+
+
+def _stamp_brush_branch(original, scene, stamps, directory, harmonize):
+    method = brush_method(scene)
+    preserve_color = method == 'stamp_brush_v2'
+    guidance, _ = brush_mask(original, scene.get('brushes', []))
+    result = original.copy(); support = Image.new('L', original.size)
+    lookup = {stamp['id']: stamp for stamp in stamps}
+    available = sorted([stamp for stamp in stamps if stamp.get('split') == 'train'], key=lambda row: row['id'])
+    random = np.random.default_rng(scene.get('seed', 0))
+    regions, layers, warnings = [], [], []
+    for index, brush in enumerate(scene.get('brushes', [])):
+        identifier = brush.get('stamp_id') or scene.get('brush_stamp_id')
+        if not identifier and scene.get('brush_stamp_mode') == 'random' and available:
+            identifier = available[int(random.integers(len(available)))]['id']
+        stamp = lookup.get(identifier)
+        if stamp is None:
+            raise ValueError('Choose a known stamp for Stamp Brush')
+        if stamp.get('split') != 'train':
+            raise ValueError('Only train stamps are available for Stamp Brush')
+        rgba, alpha = _load_stamp(stamp, directory)
+        end_seed = int(np.random.SeedSequence([scene.get('seed', 0), index]).generate_state(1)[0]) if preserve_color else None
+        warped, mask, bounds, metadata = warp_stamp(rgba.convert('RGB'), alpha, brush['points'],
+                                                   brush.get('width', 12), original.size,
+                                                   preserve_color=preserve_color, end_seed=end_seed)
+        box = build_regions([bounds], original.size, scene.get('edit_margin', 24))[0]
+        background = original.crop(box)
+        local_mask = Image.new('L', background.size); local_rgb = background.copy()
+        offset = (bounds[0]-box[0], bounds[1]-box[1])
+        local_mask.paste(mask, offset); local_rgb.paste(warped, offset, mask)
+        if preserve_color:
+            from scratchforge.harmonization import HarmonizationResult
+            corrected = HarmonizationResult(local_rgb, 'preserve_stamp_color', 'preserve_stamp_color', (), {})
+        else:
+            corrected = harmonize(local_rgb, local_mask, background, scene.get('stamp_method', 'classical_mixed'))
+        if corrected.image.size != background.size:
+            raise ValueError('Stamp Brush harmonization returned incorrect native region dimensions')
+        result.paste(corrected.image, box[:2], local_mask)
+        support.paste(255, box[:2], local_mask)
+        regions.append(box); warnings.extend(corrected.warnings)
+        layers.append({'kind': 'brush', 'stamp_id': identifier, 'requested_method': method,
+                       'effective_method': method, 'roi': list(box),
+                       'warnings': list(corrected.warnings), 'metadata': {**metadata,
+                       'harmonization': {'requested_method': corrected.requested_method,
+                                        'effective_method': corrected.effective_method, **corrected.metadata}}})
+    return result, guidance, support, support.copy(), regions, layers, warnings
 
 
 def _stamp_branch(original, scene, stamps, directory, harmonize):
@@ -156,10 +220,15 @@ def _stamp_branch(original, scene, stamps, directory, harmonize):
 
 
 def generate_scene(original, scene, stamps, directory, infer=None, harmonize=None):
-    if harmonize is None and scene.get('placements'):
+    method = brush_method(scene)
+    if method not in {'procedural', 'sdxl', 'sd15', 'stamp_brush', 'stamp_brush_v2'}:
+        raise ValueError('Unknown brush method')
+    if harmonize is None and (scene.get('placements') or (method == 'stamp_brush' and scene.get('brushes'))):
         from scratchforge.harmonization import StampHarmonizer
         harmonize = StampHarmonizer()
-    brush_rgb, brush_guidance, brush_edit, brush_regions, brush_layers = _brush_branch(original, scene, infer)
+    branch = (_stamp_brush_branch(original, scene, stamps, directory, harmonize) if method in {'stamp_brush', 'stamp_brush_v2'}
+              else _brush_branch(original, scene, infer))
+    brush_rgb, brush_guidance, brush_edit, brush_labels, brush_regions, brush_layers, brush_warnings = branch
     stamp_rgb, stamp_mask, stamp_regions, stamp_layers, warnings = _stamp_branch(
         original, scene, stamps, directory, harmonize)
     if not brush_guidance.getbbox() and not stamp_mask.getbbox():
@@ -168,5 +237,9 @@ def generate_scene(original, scene, stamps, directory, infer=None, harmonize=Non
     result = brush_rgb.copy(); result.paste(stamp_rgb, (0, 0), stamp_mask)
     guidance = Image.fromarray(np.maximum(np.asarray(brush_guidance), np.asarray(stamp_mask)))
     edit = Image.fromarray(np.maximum(np.asarray(brush_edit), np.asarray(stamp_mask)))
-    return SceneOutput(composite(original, result, edit), guidance, edit, [],
-                       [*brush_regions, *stamp_regions], [*brush_layers, *stamp_layers], tuple(dict.fromkeys(warnings)))
+    labels = Image.fromarray(np.maximum(np.asarray(brush_labels), np.asarray(stamp_mask)))
+    if not labels.getbbox():
+        warnings.append('No scratch was detected; review the image and add or correct its labels.')
+    return SceneOutput(composite(original, result, edit), guidance, edit, mask_to_polygons(labels),
+                       [*brush_regions, *stamp_regions], [*brush_layers, *stamp_layers],
+                       tuple(dict.fromkeys([*brush_warnings, *warnings])), labels)

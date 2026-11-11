@@ -3,12 +3,18 @@ import json
 import time
 import zipfile
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
+from pycocotools import mask as coco_tools
 
 from backend.main import create_app
 from scratchforge.dataset import sha
+
+
+def decode_coco(segmentation, size):
+    return coco_tools.decode(coco_tools.merge(coco_tools.frPyObjects(segmentation, size[1], size[0]))) * 255
 
 
 @pytest.fixture
@@ -40,10 +46,13 @@ def test_review_gate_and_export_roundtrip(studio):
     job = finish(studio, {'image_id': image['id'], 'engine': 'sdxl', 'brushes': [{'points': [20, 20, 60, 40], 'width': 4}]})
     assert job['status'] == 'succeeded', job
     result = job['result']
-    assert result['polygons'] == []
+    assert result['polygons'] and result['review_status'] == 'pending'
     rid = result['id']
+    assert (studio.app.state.store.out/f'{rid}.tif').is_file()
+    assert not (studio.app.state.store.out/f'{rid}.png').exists()
+    assert studio.get(result['preview']).headers['content-type'] == 'image/png'
     assert studio.post(f'/api/results/{rid}/export').status_code == 409
-    assert studio.post(f'/api/results/{rid}/approve', json={'confirmed': True}).status_code == 422
+    assert studio.post(f'/api/results/{rid}/approve', json={'confirmed': True}).status_code == 200
     polygons = [[19, 18, 65, 18, 65, 45, 19, 45]]
     assert studio.put(f'/api/results/{rid}/annotations', json={'polygons': polygons}).status_code == 200
     assert studio.post(f'/api/results/{rid}/approve', json={'confirmed': True}).status_code == 200
@@ -51,7 +60,15 @@ def test_review_gate_and_export_roundtrip(studio):
     assert exported.status_code == 200, exported.text
     archive = zipfile.ZipFile(io.BytesIO(studio.get(exported.json()['url']).content))
     coco = json.loads(archive.read('annotations.json'))
-    assert coco['annotations'][0]['segmentation'] == polygons
+    assert coco['images'][0]['file_name'] == 'image.tif'
+    with Image.open(io.BytesIO(archive.read('image.tif'))) as exported_image:
+        assert exported_image.format == 'TIFF'
+        assert exported_image.size == (120, 100)
+    with Image.open(io.BytesIO(archive.read('mask.png'))) as mask:
+        assert mask.size == (120, 100)
+        assert mask.getpixel((25, 25)) == 255
+        assert mask.getpixel((2, 2)) == 0
+        assert np.array_equal(np.asarray(mask), decode_coco(coco['annotations'][0]['segmentation'], mask.size))
     assert coco['images'][0]['width'] == 120
     assert 'provenance.json' in archive.namelist()
     download = exported.json()['url']
@@ -65,8 +82,10 @@ def test_upload_is_exploratory_and_invalid_requests(studio):
     assert studio.get('/api/backgrounds').json()[0]['id'] == 'clean-1'
     assert studio.get('/api/dataset').json()['ready'] is False
     assert studio.post('/api/upload', files={'file': ('bad.png', b'bad')}).status_code == 400
-    stream = io.BytesIO(); Image.new('RGB', (100, 90)).save(stream, 'PNG')
-    image = studio.post('/api/upload', files={'file': ('ok.png', stream.getvalue())}).json()
+    stream = io.BytesIO(); Image.new('RGB', (100, 90)).save(stream, 'TIFF')
+    image = studio.post('/api/upload', files={'file': ('ok.tiff', stream.getvalue())}).json()
+    assert (studio.app.state.store.out/f"{image['id']}-input.tif").is_file()
+    assert studio.get(image['url']).headers['content-type'] == 'image/png'
     job = finish(studio, {'image_id': image['id'], 'engine': 'baseline', 'brushes': [{'points': [10, 10, 30, 30], 'width': 3}]})
     rid = job['result']['id']
     studio.put(f'/api/results/{rid}/annotations', json={'polygons': [[10, 10, 30, 10, 30, 30]]})
@@ -161,6 +180,10 @@ def test_verified_stamp_source_and_assets_generate_successfully(studio):
     job = finish(studio, {'image_id': image['id'], 'placements': [{'stamp_id': 'stamp-1', 'x': 40, 'y': 40}]})
     assert job['status'] == 'succeeded', job
     assert job['result']['provenance']['stamps'][0]['source_frame_id'] == 'ng-1'
+    # A rebuild retires old library entries but saved scenes still refer to their IDs.
+    (library/'index.json').write_text('[]')
+    (library/'legacy-index.json').write_text(json.dumps([stamp]))
+    assert finish(studio, job['result']['scene'])['status'] == 'succeeded'
 
 
 @pytest.mark.parametrize('engine', [[], {}, 7])
@@ -169,3 +192,45 @@ def test_malformed_legacy_engine_is_validation_error(studio, engine):
     response = studio.post('/api/jobs', json={'image_id': image['id'], 'engine': engine,
                                              'brushes': [{'points': [10, 10, 30, 30]}]})
     assert response.status_code == 422
+
+
+def test_upload_checks_tiff_format_pages_and_size(studio, monkeypatch):
+    from PIL import TiffImagePlugin
+
+    frame = Image.new('RGB', (100, 90))
+    def send(filename, fmt, **options):
+        stream = io.BytesIO()
+        frame.save(stream, fmt, **options)
+        return studio.post('/api/upload', files={'file': (filename, stream.getvalue())})
+
+    assert send('wrong.tif', 'JPEG').status_code == 400
+    assert send('wrong.jpg', 'TIFF').status_code == 400
+    assert studio.post('/api/upload', files={'file': ('bad.tif', b'bad')}).status_code == 400
+    assert send('multiple.tif', 'TIFF', save_all=True, append_images=[frame]).status_code == 400
+    tags = TiffImagePlugin.ImageFileDirectory_v2()
+    tags[274] = 3
+    assert send('rotated.tif', 'TIFF', tiffinfo=tags).status_code == 400
+    from backend import images
+    monkeypatch.setattr(images, 'MAX_TIFF_PIXELS', 8999)
+    assert send('large.tif', 'TIFF').status_code == 400
+    from backend import main
+    monkeypatch.setattr(main, 'MAX_TIFF_UPLOAD', 10)
+    assert send('large-bytes.tif', 'TIFF').status_code == 413
+
+
+def test_existing_png_export_uses_preserved_source_manifest(studio):
+    store = studio.app.state.store
+    legacy = store.index()[0]
+    rid = 'a' * 32
+    png = store.out/f'{rid}.png'
+    Image.new('RGB', (120, 100)).save(png)
+    store.save('result', rid, {
+        'id': rid, 'image_sha256': sha(png), 'export_url': f'/files/{rid}.zip',
+        'review_status': 'approved', 'provenance': {'background': legacy, 'stamps': []},
+    })
+    (store.out/f'{rid}.zip').write_bytes(b'old zip')
+    folder = store.root/'data/fullframe'
+    (folder/'legacy-index.json').write_text(json.dumps([legacy]))
+    (folder/'index.json').write_text(json.dumps([{**legacy, 'sha256': 'new-tiff-checksum'}]))
+    assert studio.get(f'/files/{rid}.zip').content == b'old zip'
+    assert studio.get(f'/files/{rid}.png').headers['content-type'] == 'image/png'

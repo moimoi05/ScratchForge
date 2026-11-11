@@ -5,6 +5,7 @@ import threading
 import uuid
 from pathlib import Path
 
+from backend.images import save_tiff
 from scratchforge.dataset import sha
 
 
@@ -36,15 +37,22 @@ class Store:
         return read_json(self.root/'data/fullframe/index.json', [])
 
     def library(self):
-        return read_json(self.root/'data/library/index.json', [])
+        from backend.library import merge_library
+        from backend.segment import active_library
 
-    def verify_train_source(self, source, status):
-        row = next((row for row in self.index() if row['id'] == source.get('id')), None)
+        with self.lock:
+            return merge_library(self, active_library(self, read_json(self.root/'data/library/index.json', [])))
+
+    def verify_train_source(self, source, status, *, historical=False):
+        rows = self.index()
+        if historical:
+            rows = [*rows, *read_json(self.root/'data/fullframe/legacy-index.json', [])]
         keys = ('sha256', 'source_image', 'source_image_id')
-        if (not row or row.get('split') != 'train' or row.get('status') != status
-                or not source.get('sha256') or any(row.get(key) != source.get(key) for key in keys)):
-            raise ValueError('Training source no longer matches the verified train manifest')
-        return row
+        for row in rows:
+            if (row['id'] == source.get('id') and row.get('split') == 'train' and row.get('status') == status
+                    and source.get('sha256') and all(row.get(key) == source.get(key) for key in keys)):
+                return row
+        raise ValueError('Training source no longer matches the verified train manifest')
 
     def load(self, kind, identifier):
         if not re.fullmatch('[a-f0-9]{32}', identifier):
@@ -61,9 +69,21 @@ class Store:
 
     def register(self, image, source=None):
         identifier = uuid.uuid4().hex
-        image.save(self.out/f'{identifier}-input.png')
+        native = save_tiff(image, self.out/f'{identifier}-input.tif')
         record = {'id': identifier, 'width': image.width, 'height': image.height,
                   'url': f'/files/{identifier}-input.png', 'source': source,
-                  'input_sha256': sha(self.out/f'{identifier}-input.png')}
-        self.save('input', identifier, record)
+                  'input_format': 'tiff', 'input_sha256': sha(native)}
+        try:
+            self.save('input', identifier, record)
+        except Exception:
+            native.unlink(missing_ok=True)
+            raise
         return {key: value for key, value in record.items() if key not in ('source', 'input_sha256')}
+
+    def input_image(self, record):
+        suffix = '.tif' if record.get('input_format') == 'tiff' else '.png'
+        return self.out/f"{record['id']}-input{suffix}"
+
+    def result_image(self, record):
+        suffix = '.tif' if record.get('image_format') == 'tiff' else '.png'
+        return self.out/f"{record['id']}{suffix}"

@@ -1,5 +1,20 @@
 import { test, expect } from "@playwright/test";
 
+test("Segment renders a native S942 TIFF at 100% zoom", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Segment", exact: true }).click();
+  await page.getByRole("button", { name: "S942 OK", exact: true }).click();
+  await page.getByRole("button", { name: /^Mở .*\.tif$/i }).first().click();
+  const segment = page.getByTestId("segment-canvas");
+  await expect(segment).toHaveAttribute("data-image-loaded", "true", { timeout: 90000 });
+  await page.getByRole("button", { name: "100%", exact: true }).click();
+  await expect(segment).toHaveAttribute("data-zoom", "1");
+  await expect(page.getByText("11004 × 5599", { exact: true })).toBeVisible();
+  await expect.poll(() => segment.locator("canvas").evaluate((element: HTMLCanvasElement) =>
+    element.getContext("2d")?.getImageData(20, 20, 1, 1).data[3],
+  )).toBe(255);
+});
+
 test("real F971 classical stamp keeps full frame and awaits manual review", async ({
   page,
 }) => {
@@ -12,7 +27,7 @@ test("real F971 classical stamp keeps full frame and awaits manual review", asyn
   const background = page.getByRole("button", { name: /^Chọn / }).first();
   await expect(background).toBeVisible();
   await background.click();
-  const stamp = page.getByRole("button", { name: /^Thêm original-/ }).first();
+  const stamp = page.getByRole("button", { name: /^Thêm (original|review)-/ }).first();
   await expect(stamp).toBeEnabled({ timeout: 60000 });
   await stamp.click();
   await page.getByLabel("Phương pháp ghép Stamp", { exact: true }).selectOption("classical_mixed");

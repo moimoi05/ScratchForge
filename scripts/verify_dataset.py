@@ -7,8 +7,35 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from PIL import Image
+from backend.images import validate_tiff
 from scratchforge.dataset import ROOT, save_json, sha, valid_polygons
 from scripts.import_f971 import load_splits, validate_coco
+from scripts.import_tiff_dataset import GROUPS, TIFF_SUFFIXES
+
+
+def verify_segment(root, records, coco):
+    catalog = json.loads((root / 'data/segment/index.json').read_text(encoding='utf-8'))
+    by_id = {row['id']: row for row in catalog}
+    if len(by_id) != len(catalog):
+        raise ValueError('Duplicate Segment frame ID')
+    annotations = {}
+    for item in coco['annotations']:
+        annotations.setdefault(item['image_id'], {})[item['id']] = (item['category_id'], item['segmentation'])
+    for row in records:
+        item = by_id.pop(row['id'], None)
+        if not item or item['group'] != GROUPS[row['status']] or any(item.get(key) != value for key, value in row.items()):
+            raise ValueError('Segment F971 frame differs from the verified manifest')
+        actual = {a['id']: (a['category_id'], a['segmentation']) for a in item['annotations']}
+        expected = annotations.get(row['coco_image_id'], {})
+        if actual != expected or len(actual) != len(item['annotations']):
+            raise ValueError('Segment seed geometry differs from verified COCO')
+    for row in by_id.values():
+        source = Path(row['path'])
+        if (row['group'] != GROUPS['S942'] or row['status'] != 'OK' or row['split'] is not None
+                or row['annotations'] or not source.is_absolute() or source.suffix.lower() not in TIFF_SUFFIXES
+                or source.name != row['file_name'] or not source.is_file() or sha(source) != row['sha256']):
+            raise ValueError('Invalid S942 Segment source')
+    return dict(Counter(row['group'] for row in catalog))
 
 
 def verify(root=ROOT):
@@ -47,6 +74,8 @@ def verify(root=ROOT):
         with Image.open(path) as rgb:
             if rgb.mode != 'RGB' or rgb.size != (row['width'], row['height']):
                 raise ValueError('RGB dimensions verification failed')
+            if path.suffix.lower() in TIFF_SUFFIXES:
+                validate_tiff(rgb)
     if keys != set(splits):
         raise ValueError('Split inventory differs from imported inventory')
     for annotation in coco['annotations']:
@@ -59,6 +88,9 @@ def verify(root=ROOT):
                   ok=sum(r['status'] == 'OK' for r in records), polygons=len(coco['annotations']),
                   split_counts=dict(counts), checks=['full-frame SHA256', 'RGB dimensions',
                   'source split integrity', 'full-frame COCO polygon bounds'])
+    if any(Path(row['path']).suffix.lower() in TIFF_SUFFIXES for row in records):
+        result['format'] = 'TIFF'
+        result['segment_counts'] = verify_segment(root, records, coco)
     save_json(root / 'reports/verification.json', result)
     return result
 

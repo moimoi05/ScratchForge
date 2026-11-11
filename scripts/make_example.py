@@ -40,10 +40,13 @@ def main():
                 raise TimeoutError('Baseline smoke did not finish within 120 seconds.')
             time.sleep(.25)
         result = job['result']
-        with Image.open(ROOT / image['url'].lstrip('/').replace('files/', 'outputs/', 1)) as before, \
-             Image.open(ROOT / result['preview'].lstrip('/').replace('files/', 'outputs/', 1)) as after, \
+        store = app.state.store
+        source_record = store.load('input', image['id'])
+        with Image.open(store.input_image(source_record)) as before, \
+             Image.open(store.result_image(result)) as after, \
              Image.open(ROOT / result['edit_mask'].lstrip('/').replace('files/', 'outputs/', 1)) as mask:
             outside = np.asarray(mask) == 0
+            assert before.format == after.format == 'TIFF'
             assert before.size == after.size == (image['width'], image['height'])
             assert np.array_equal(np.asarray(before)[outside], np.asarray(after)[outside])
         blocked = client.post(f"/api/results/{result['id']}/export")

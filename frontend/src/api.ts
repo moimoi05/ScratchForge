@@ -9,6 +9,11 @@ export type Stamp = {
   rgb: string;
   mask: string;
   thumbnail?: string;
+  preview_alpha?: string;
+  polygon?: string;
+  segmentation?: number[][];
+  origin?: string;
+  split?: string;
   width: number;
   height: number;
   review_status: string;
@@ -22,9 +27,14 @@ export type Placement = {
   rotation: number;
   flip: boolean;
 };
-export type Brush = { points: number[]; width: number };
+export type Brush = { points: number[]; width: number; stamp_id?: string };
 export type StampMethod = "classical_mixed" | "classical_laplacian" | "pctnet" | "harmonizer" | "rainnet";
-export type BrushMethod = "sdxl" | "sd15" | "procedural";
+export type BrushMethod = "sdxl" | "sd15" | "procedural" | "stamp_brush" | "stamp_brush_v2";
+export type LoraCheckpoint = { id: string; base_model: "sd15" | "sdxl"; name?: string; revision?: string; weights?: string };
+export type ModelHealth = { model_available?: boolean; loaded_lora_id?: string | null; lora_loaded?: boolean };
+export type Health = { ai?: ModelHealth; brush_models?: { sdxl?: ModelHealth; sd15?: ModelHealth }; engine?: string };
+export type LibraryJob = { id: string; status: string; progress?: number; error?: string;
+  operation_result?: { stamps?: Stamp[]; rejected?: unknown[]; lora_id?: string; checkpoint?: LoraCheckpoint } };
 export type Scene = {
   image_id?: string;
   placements: Placement[];
@@ -35,6 +45,9 @@ export type Scene = {
   seed?: number;
   strength?: number;
   edit_margin?: number;
+  brush_stamp_mode?: "selected" | "random";
+  brush_stamp_id?: string;
+  lora_id?: string | null;
 };
 export type Background = {
   id: string;
@@ -48,7 +61,11 @@ export type Background = {
 export type Result = {
   id: string;
   preview: string;
+  input_preview?: string;
   edit_mask: string;
+  native_image?: string;
+  label_mask?: string;
+  polygon_file?: string;
   width: number;
   height: number;
   polygons: number[][];
@@ -56,6 +73,7 @@ export type Result = {
   scene: Scene;
   warnings?: string[];
   provenance?: {
+    stamps?: Stamp[];
     layers?: { kind: "stamp" | "brush"; requested_method: string; effective_method: string }[];
   };
 };

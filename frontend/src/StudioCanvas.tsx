@@ -23,13 +23,13 @@ export function ScratchSprite({
   onSelect: () => void;
   onChange: (p: Placement) => void;
 }) {
-  const [rgb] = useImage(url("/library-files/" + stamp.rgb), "anonymous");
-  const [mask] = useImage(url("/library-files/" + stamp.mask), "anonymous");
+  const [rgb] = useImage(url("/library-files/" + (stamp.preview_alpha ?? stamp.rgb)), "anonymous");
+  const [mask] = useImage(stamp.preview_alpha ? "" : url("/library-files/" + stamp.mask), "anonymous");
   const [cut, setCut] = useState<HTMLCanvasElement>();
   const node = useRef<Konva.Image>(null),
     transformer = useRef<Konva.Transformer>(null);
   useEffect(() => {
-    if (!rgb || !mask) return;
+    if (stamp.preview_alpha || !rgb || !mask) return;
     const canvas = document.createElement("canvas");
     canvas.width = stamp.width;
     canvas.height = stamp.height;
@@ -47,7 +47,7 @@ export function ScratchSprite({
     ctx.globalCompositeOperation = "destination-in";
     ctx.drawImage(alpha, 0, 0);
     setCut(canvas);
-  }, [rgb, mask, stamp.width, stamp.height]);
+  }, [rgb, mask, stamp.width, stamp.height, stamp.preview_alpha]);
   useEffect(() => {
     if (selected && node.current) transformer.current?.nodes([node.current]);
   }, [selected]);
@@ -55,7 +55,9 @@ export function ScratchSprite({
     <>
       <KImage
         ref={node}
-        image={cut}
+        image={stamp.preview_alpha ? rgb : cut}
+        width={stamp.width}
+        height={stamp.height}
         x={placement.x}
         y={placement.y}
         offsetX={stamp.width / 2}
@@ -101,6 +103,10 @@ export function ScratchSprite({
 
 export function StudioCanvas({
   image,
+  preview,
+  disabled,
+  onImportFile,
+  onImportBackground,
   scene,
   stamps,
   tool,
@@ -111,6 +117,10 @@ export function StudioCanvas({
   onAdd,
 }: {
   image?: Background;
+  preview?: HTMLImageElement;
+  disabled?: boolean;
+  onImportFile?: (file: File) => void;
+  onImportBackground?: (id: string) => void;
   scene: Scene;
   stamps: Stamp[];
   tool: "select" | "brush";
@@ -120,7 +130,8 @@ export function StudioCanvas({
   onChange: (s: Scene) => void;
   onAdd: (stamp: Stamp, x: number, y: number) => void;
 }) {
-  const [bg] = useImage(image ? url(image.url) : "", "anonymous");
+  const [loadedBackground] = useImage(image && !preview ? url(image.url) : "", "anonymous");
+  const bg = preview ?? loadedBackground;
   const [zoom, setZoom] = useState(1),
     [pan, setPan] = useState({ x: 0, y: 0 }),
     [width, setWidth] = useState(900);
@@ -175,6 +186,7 @@ export function StudioCanvas({
             : "Chọn một ảnh OK để bắt đầu"}
         </span>
         <button
+          data-tooltip={image ? "Thu phóng để thấy toàn bộ ảnh nền." : "Mở ảnh nền TIFF trước để căn vừa khung."}
           onClick={() => {
             if (image) {
               setZoom(
@@ -190,6 +202,7 @@ export function StudioCanvas({
           Vừa khung
         </button>
         <button
+          data-tooltip="Xem một pixel ảnh trên một pixel canvas."
           onClick={() => {
             setZoom(1);
             setPan({ x: 0, y: 0 });
@@ -219,6 +232,17 @@ export function StudioCanvas({
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
+          if (disabled) return;
+          const file = e.dataTransfer.files[0];
+          if (file) {
+            onImportFile?.(file);
+            return;
+          }
+          const background = e.dataTransfer.getData("background");
+          if (background) {
+            onImportBackground?.(background);
+            return;
+          }
           if (!image) return;
           const stamp = stamps.find(
             (s) => s.id === e.dataTransfer.getData("stamp"),
@@ -239,13 +263,13 @@ export function StudioCanvas({
           scaleY={zoom}
           x={pan.x}
           y={pan.y}
-          draggable={tool === "select"}
+          draggable={!disabled && tool === "select"}
           onDragEnd={(e) => {
             if (e.target === e.target.getStage())
               setPan({ x: e.target.x(), y: e.target.y() });
           }}
           onMouseDown={(e) => {
-            if (tool !== "brush" || !image) return;
+            if (disabled || tool !== "brush" || !image) return;
             const p = point(e.target.getStage()!);
             if (!p) return;
             drawing.current = true;

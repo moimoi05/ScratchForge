@@ -1,6 +1,8 @@
 """Local ScratchForge API. Run one Uvicorn worker to serialize GPU access."""
+import hashlib
 import io
 import re
+from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request as HttpRequest, UploadFile
@@ -9,8 +11,10 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, UnidentifiedImageError
 
+from backend.images import MAX_TIFF_UPLOAD, preview_png, validate_tiff
 from backend.jobs import Jobs
 from backend.models import Annotations, Approval, Brush, ModelDownloadRequest, Placement, Request
+from backend.segment import historical_stamp_asset, segment_router
 from backend.store import Store, read_json
 from scratchforge.dataset import ROOT, sha
 from scratchforge.generation import generate_scene
@@ -29,7 +33,7 @@ def create_app(root=ROOT, infer=None, harmonize=None, downloads=None):
     async def lifespan(app):
         yield
         downloads.close()
-        jobs.executor.shutdown(wait=True, cancel_futures=False)
+        jobs.close()
 
     application = FastAPI(title='ScratchForge F971 Studio', lifespan=lifespan)
     application.state.store = store; application.state.jobs = jobs
@@ -42,8 +46,10 @@ def create_app(root=ROOT, infer=None, harmonize=None, downloads=None):
         if request.method not in ('GET', 'HEAD', 'OPTIONS') and origin and origin not in ALLOWED_ORIGINS:
             return JSONResponse({'detail': 'Untrusted request origin'}, status_code=403)
         content_length = request.headers.get('content-length')
-        if content_length and (not content_length.isdigit() or int(content_length) > 42*1024*1024):
-            return JSONResponse({'detail': 'Request exceeds 42 MiB'}, status_code=413)
+        limit = 252 if request.url.path == '/api/library/import' else (
+            MAX_TIFF_UPLOAD // (1024*1024) + 2 if request.url.path == '/api/upload' else 42)
+        if content_length and (not content_length.isdigit() or int(content_length) > limit*1024*1024):
+            return JSONResponse({'detail': f'Request exceeds {limit} MiB'}, status_code=413)
         return await call_next(request)
 
     @application.exception_handler(ValueError)
@@ -60,7 +66,7 @@ def create_app(root=ROOT, infer=None, harmonize=None, downloads=None):
 
     @application.get('/api/health')
     def health():
-        return {'engine': 'separate stamp harmonization and brush generation', 'trained': False,
+        return {'engine': 'separate stamp harmonization and brush generation', 'trained': bool(jobs.training.checkpoints()),
                 'ai': jobs.ai.metadata(), 'brush_models': {'sdxl': jobs.ai.metadata(), 'sd15': jobs.sd15.metadata()},
                 'stamp_methods': ['classical_mixed', 'classical_laplacian', 'pctnet', 'harmonizer', 'rainnet']}
 
@@ -86,38 +92,46 @@ def create_app(root=ROOT, infer=None, harmonize=None, downloads=None):
 
     @application.get('/api/training')
     def training():
-        return {'status': 'pretrained inference only', 'checkpoints': [], 'fine_tuned_f971': False}
+        checkpoints = jobs.training.checkpoints()
+        return {'status': 'local LoRA training', 'checkpoints': checkpoints, 'fine_tuned_f971': bool(checkpoints)}
+
+    from backend.training import GenerateStampsRequest, TrainLoraRequest
+
+    @application.post('/api/training/lora')
+    def train_lora(request: TrainLoraRequest):
+        return jobs.submit_operation('train', request.model_dump())
+
+    @application.post('/api/library/generate')
+    def generate_stamps(request: GenerateStampsRequest):
+        return jobs.submit_operation('generate_stamps', request.model_dump())
 
     @application.get('/api/backgrounds')
     def backgrounds():
         return [{'id': row['id'], 'width': row['width'], 'height': row['height'],
                  'url': f"/api/backgrounds/{row['id']}/image", 'thumbnail': f"/api/backgrounds/{row['id']}/thumbnail",
-                 'source_image': row['source_image'], 'split': row['split']}
+                 'source_image': Path(row['path']).name, 'split': row['split']}
                 for row in store.index() if row['status'] == 'OK' and row['split'] == 'train']
 
     def background(identifier):
         return next((row for row in store.index() if str(row['id']) == identifier
                      and row['status'] == 'OK' and row['split'] == 'train'), None)
 
-    @application.get('/api/backgrounds/{identifier}/image')
-    def background_image(identifier: str):
+    def background_preview(identifier, thumbnail=False):
         row = background(identifier)
         if row is None:
             raise HTTPException(404, 'Background not found')
-        return FileResponse(store.asset(row['path']))
+        key = hashlib.sha256(f"{row['id']}/{row.get('sha256')}".encode()).hexdigest()
+        size = (480, 320) if thumbnail else None
+        cached = store.out/f"background-{'thumb' if thumbnail else 'full'}-{key}.png"
+        return FileResponse(preview_png(store.asset(row['path']), cached, size), media_type='image/png')
+
+    @application.get('/api/backgrounds/{identifier}/image')
+    def background_image(identifier: str):
+        return background_preview(identifier)
 
     @application.get('/api/backgrounds/{identifier}/thumbnail')
     def background_thumbnail(identifier: str):
-        row = background(identifier)
-        if row is None:
-            raise HTTPException(404, 'Background not found')
-        import hashlib
-        cached = store.out/('thumb-' + hashlib.sha256(str(row['id']).encode()).hexdigest() + '.jpg')
-        if not cached.exists():
-            with store.lock, Image.open(store.asset(row['path'])) as image:
-                thumbnail = image.convert('RGB'); thumbnail.thumbnail((480, 320))
-                thumbnail.save(cached, quality=80)
-        return FileResponse(cached)
+        return background_preview(identifier, thumbnail=True)
 
     @application.post('/api/backgrounds/{identifier}/open')
     def open_background(identifier: str):
@@ -130,20 +144,26 @@ def create_app(root=ROOT, infer=None, harmonize=None, downloads=None):
         with Image.open(source_path) as image:
             if image.size != (row['width'], row['height']) or image.mode != 'RGB':
                 raise ValueError('Imported background dimensions or RGB mode changed')
+            if source_path.suffix.lower() in {'.tif', '.tiff'}:
+                validate_tiff(image)
             return store.register(image.convert('RGB'), row)
 
     @application.post('/api/upload')
-    async def upload(file: UploadFile):
-        content = await file.read(40*1024*1024+1)
-        if len(content) > 40*1024*1024:
-            raise HTTPException(413, 'Max upload 40 MiB')
+    def upload(file: UploadFile):
+        if Path(file.filename or '').suffix.lower() not in {'.tif', '.tiff'}:
+            raise HTTPException(400, 'Use a .tif or .tiff image')
+        content = file.file.read(MAX_TIFF_UPLOAD + 1)
+        if len(content) > MAX_TIFF_UPLOAD:
+            raise HTTPException(413, f'Max TIFF upload {MAX_TIFF_UPLOAD // (1024*1024)} MiB')
         try:
             with Image.open(io.BytesIO(content)) as image:
-                if image.mode != 'RGB' or image.width*image.height > 50_000_000:
-                    raise ValueError('Use an RGB image with at most 50 megapixels')
-                return store.register(image)
-        except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
-            raise HTTPException(400, 'Invalid RGB image, unsupported format or image too large')
+                validate_tiff(image)
+                rgb = image.convert('RGB')
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from error
+        except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as error:
+            raise HTTPException(400, 'Invalid TIFF image or image too large') from error
+        return store.register(rgb)
 
     @application.post('/api/jobs')
     def submit(request: Request):
@@ -156,6 +176,10 @@ def create_app(root=ROOT, infer=None, harmonize=None, downloads=None):
         if record.get('result_id'):
             return {**record, 'result': store.load('result', record['result_id'])}
         return record
+
+    @application.post('/api/jobs/{identifier}/cancel')
+    def cancel_job(identifier: str):
+        return jobs.cancel(identifier)
 
     @application.get('/api/results/{identifier}')
     def result(identifier: str):
@@ -180,26 +204,41 @@ def create_app(root=ROOT, infer=None, harmonize=None, downloads=None):
 
     @application.get('/files/{name}')
     def files(name: str):
-        if not re.fullmatch(r'[a-f0-9]{32}(?:-input|-guidance|-edit|-labels)?\.(?:png|zip)', name):
+        if not re.fullmatch(r'[a-f0-9]{32}(?:(?:-input|-guidance|-edit|-labels)?\.png|\.tif|-polygon\.json|\.zip)', name):
             raise HTTPException(404, 'File not found')
         path = store.out/name
+        if path.suffix == '.png' and re.fullmatch(r'[a-f0-9]{32}(?:-input)?', path.stem):
+            native = path.with_suffix('.tif')
+            if native.is_file():
+                return FileResponse(preview_png(native, path), media_type='image/png')
         if not path.is_file():
             raise HTTPException(404, 'File not found')
+        if path.suffix == '.tif' or name.endswith(('-labels.png', '-polygon.json')):
+            identifier = name[:32]
+            record = store.load('result', identifier)
+            jobs.verify_image(record)
+            jobs.verify_labels(record)
         if path.suffix == '.zip':
             record = store.load('result', path.stem)
             if record['review_status'] != 'approved' or not record.get('export_url'):
                 raise HTTPException(409, 'Export approval is no longer valid')
             jobs.verify_image(record)
+            jobs.verify_labels(record)
             jobs.verify_export_sources(record)
         return FileResponse(path)
 
-    @application.get('/library-files/{name}')
+    @application.get('/library-files/{name:path}')
     def library_file(name: str):
-        allowed = {stamp.get(key) for stamp in store.library() for key in ('rgb', 'mask', 'thumbnail')}
-        if name not in allowed:
+        from backend.library import registered_records
+        allowed = {stamp.get(key) for stamp in registered_records(store)
+                   for key in ('rgb', 'mask', 'thumbnail', 'preview_alpha', 'polygon', 'metadata')}
+        if name not in allowed and not historical_stamp_asset(store, name):
             raise HTTPException(404, 'Library asset not found')
         return FileResponse(store.asset('data/library/' + name))
 
+    application.include_router(segment_router(store))
+    from backend.library_api import library_router
+    application.include_router(library_router(store, jobs))
     dist = store.root/'frontend/dist'
     if dist.is_dir():
         application.mount('/', StaticFiles(directory=dist, html=True), name='studio')

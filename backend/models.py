@@ -20,6 +20,7 @@ class Placement(StrictModel):
 class Brush(StrictModel):
     points: list[float] = Field(min_length=4, max_length=20000)
     width: float = Field(default=12, ge=1, le=512)
+    stamp_id: str | None = Field(default=None, min_length=1, max_length=100)
 
     @model_validator(mode='after')
     def valid_points(self):
@@ -34,7 +35,12 @@ class Request(StrictModel):
     brushes: list[Brush] = Field(default_factory=list, max_length=100)
     engine: Literal['baseline', 'sdxl'] | None = None
     stamp_method: Literal['classical_mixed', 'classical_laplacian', 'pctnet', 'harmonizer', 'rainnet'] = 'classical_mixed'
-    brush_method: Literal['sdxl', 'sd15', 'procedural'] = 'procedural'
+    brush_method: Literal['stamp_brush', 'stamp_brush_v2', 'sdxl', 'sd15', 'procedural'] = 'procedural'
+    brush_stamp_mode: Literal['selected', 'random'] = 'selected'
+    brush_stamp_id: str | None = Field(default=None, min_length=1, max_length=100)
+    lora_id: str | None = Field(default=None, pattern='^[a-f0-9]{32}$')
+    ai_mask_threshold: int = Field(default=8, ge=1, le=255)
+    min_component_area: int = Field(default=3, ge=1, le=10000)
     seed: int = Field(default=0, ge=0, le=2**32-1)
     strength: float = Field(default=.65, ge=.1, le=.99)
     edit_margin: int = Field(default=24, ge=0, le=128)
@@ -56,7 +62,7 @@ class Request(StrictModel):
 
 
 class Annotations(StrictModel):
-    polygons: list[list[float]] = Field(max_length=500)
+    polygons: list[list[float]] = Field(max_length=10000)
 
     @model_validator(mode='after')
     def bounded(self):
